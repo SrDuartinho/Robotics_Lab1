@@ -1,0 +1,13 @@
+The LTA works with a camera and computer vision algorithms. Are we supposed to try to replicate this or are we supposed 
+to create some kind of sensors that detect the lines.
+
+
+There are a few simulators that already have the car sensors, can we use these or are we supposed to make the sensors from scratch
+
+We are supposed to make a very simple simulation, with only a car and two lines representing the road.
+The LTA should not be a progammed cammera, it should just be some kind of algorithm that detects a valid distance to the
+lines on both sides of the car. The car shouldn't try to keep in the middle, it should just slightly turn the steering weel
+when it gets to close to one of the sides.
+Very simple car geometry, with maybe (x,y,teta).
+Could make a timed simulation, with many different situations, straight lines,  slight curves, tight curves, intersections, etc..
+Use an already existing library for turning the car mannualy, for just side to side on keyboard or complete joystick.
