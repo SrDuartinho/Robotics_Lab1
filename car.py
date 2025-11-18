@@ -46,20 +46,21 @@ class Car:
         """
         self._last_V = V
         self._last_omega_s = omega_s
-        
-        # 1. Update Steering (Phi)
-        self.phi += omega_s * dt
-        self.phi = np.clip(self.phi, -self.max_steer, self.max_steer)
 
-        # 2. Kinematic Bicycle Model (Rear Axle Reference)
-        x_dot = V * np.cos(self.theta)
-        y_dot = V * np.sin(self.theta)
-        theta_dot = (V / self.L) * np.tan(self.phi)
+        # 1. Kinematic Bicycle Model (Rear Axle Reference)
+        x_dot     = np.cos(self.theta) * np.cos(self.phi) * V
+        y_dot     = np.sin(self.theta) * np.cos(self.phi) * V
+        theta_dot = (np.sin(self.phi) / self.L) * V
+        phi_dot   = omega_s
         
-        # 3. Integration
-        self.x += x_dot * dt
-        self.y += y_dot * dt
+        # 2. Integration
+        self.x     += x_dot * dt
+        self.y     += y_dot * dt
         self.theta += theta_dot * dt
+        self.phi   += phi_dot * dt
+
+        # Limit Steering angle
+        self.phi = max(-self.max_steer, min(self.phi, self.max_steer))
         
         # Normalize theta to [-π, π]
         self.theta = np.arctan2(np.sin(self.theta), np.cos(self.theta))
