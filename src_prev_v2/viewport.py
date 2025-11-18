@@ -1,6 +1,6 @@
 import pygame
 import numpy as np
-from src_prev_v2.constants import SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX, DEFAULT_ZOOM, ZOOM_SPEED
+from constants import SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX, DEFAULT_ZOOM, ZOOM_SPEED
 
 class Viewport:
     """
@@ -19,8 +19,8 @@ class Viewport:
         
     def update(self, car):
         """Follows the car's WCS position."""
-        
-        self.x, self.y = car.x, car.y
+        self.x = car.x
+        self.y = car.y
         
         # --- Handle Zoom Input (Optional) ---
         keys = pygame.key.get_pressed()

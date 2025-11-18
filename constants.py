@@ -1,90 +1,93 @@
-import pygame
 import numpy as np
+import math
 
-# --- 1. REAL-WORLD UNITS (METERS) ---
-PPM = 50  # Pixels Per Meter
-
-# Car dimensions
-CAR_LENGTH_M = 4.5    # meters
-CAR_WIDTH_M = 1.8     # meters
-CAR_WHEELBASE_M = 2.8  # meters
-
-# Environment dimensions
-LANE_WIDTH_M = 3.7     # meters
-LANE_COUNT = 3
-WHITE_LINE_WIDTH_M = 0.1  # meters
-
-# Car physics
-MAX_SPEED_MPS = 50.0  # Meters per Second
-REVERSE_SPEED_FACTOR = 0.5  # As a factor of max speed
-MAX_STEER_ANGLE_DEG = 30.0  # Max angle of the front wheels
-STEER_RATE_DPS = 180.0  # Degrees per Second
-
-# Sensor properties
-SENSOR_RANGE_FRONT_M = 5.0  # 5 meters
-SENSOR_RANGE_SIDE_M = 3.0   # 3 meters
-SENSOR_RANGE_DIAG_M = 4.0   # 4 meters
-
-# --- 2. SIMULATION & SCREEN UNITS (PIXELS) ---
+# --- 1. SIMULATION CONFIGURATION ---
 SCREEN_WIDTH_PX = 1280
 SCREEN_HEIGHT_PX = 720
 FPS = 60
-DT = 1.0 / FPS  # Delta Time (time per frame)
+DT = 1.0 / FPS             # Time per frame (seconds)
+WINDOW_TITLE = "Robotics Lab 1: Kinematic Bicycle Model"
 
-WINDOW_TITLE = "Robotics Lab 1: LTA"
+# --- 2. SCALE (The Bridge between Worlds) ---
+PPM = 50  # Pixels Per Meter (50 px = 1 m)
 
-# --- 3. DERIVED PIXEL VALUES ---
+# --- 3. REAL-WORLD CONSTANTS (METERS & SECONDS) ---
+# Physical Dimensions
+CAR_LENGTH_M = 4.5
+CAR_WIDTH_M = 2.0
+CAR_WHEELBASE_M = 2.8      # Distance between front and rear axles
+LANE_WIDTH_M = 3.7
+WHITE_LINE_WIDTH_M = 0.15
+
+# Motion Limits
+MAX_SPEED_MPS = 10.0
+REVERSE_SPEED_FACTOR = 0.5 # Reverse is half max speed
+MAX_STEER_ANGLE_DEG = 35.0
+STEER_RATE_DPS = 30.0     # Degrees per second
+
+# Sensors
+SENSOR_RANGE_FRONT_M = 10.0
+SENSOR_RANGE_SIDE_M = 5.0
+SENSOR_RANGE_DIAG_M = 7.0
+
+# --- 4. INITIALIZATION (Start State) ---
+# We define these here so main.py doesn't need magic numbers
+CAR_INITIAL_X_PX = SCREEN_WIDTH_PX // 2
+CAR_INITIAL_Y_PX = SCREEN_HEIGHT_PX // 2
+CAR_INITIAL_THETA = -np.pi / 2  # Pointing UP in Pygame
+
+# --- 5. DERIVED PIXEL CONSTANTS (Calculated automatically) ---
+# Dimensions
 CAR_LENGTH_PX = CAR_LENGTH_M * PPM
 CAR_WIDTH_PX = CAR_WIDTH_M * PPM
 CAR_WHEELBASE_PX = CAR_WHEELBASE_M * PPM
 LANE_WIDTH_PX = LANE_WIDTH_M * PPM
 WHITE_LINE_WIDTH_PX = WHITE_LINE_WIDTH_M * PPM
 
-MAX_SPEED_PPS = MAX_SPEED_MPS * PPM  # Pixels per Second
-MAX_SPEED_PPF = MAX_SPEED_PPS * DT   # Pixels per Frame
-REVERSE_SPEED_PPF = MAX_SPEED_PPF * REVERSE_SPEED_FACTOR
+# Overhang for rendering (Center the wheelbase visually)
+REAR_OVERHANG_PX = (CAR_LENGTH_PX - CAR_WHEELBASE_PX) / 2
 
-STEER_RATE_DPF = STEER_RATE_DPS * DT  # Degrees per Frame
+# Motion
+MAX_SPEED_PPS = MAX_SPEED_MPS * PPM          # Pixels/Second
+MAX_STEER_ANGLE_RAD = math.radians(MAX_STEER_ANGLE_DEG)
+STEER_RATE_RPS = math.radians(STEER_RATE_DPS)
 
+# Sensors
 SENSOR_RANGE_FRONT_PX = SENSOR_RANGE_FRONT_M * PPM
 SENSOR_RANGE_SIDE_PX = SENSOR_RANGE_SIDE_M * PPM
 SENSOR_RANGE_DIAG_PX = SENSOR_RANGE_DIAG_M * PPM
 
-# --- 4. ENVIRONMENT GENERATION ---
-STRAIGHT_ENV_LENGTH_M = 10  # Length of the straight road
-RANDOM_ENV_POINTS = 7        # Control points for spline
-RANDOM_ENV_MIN_RAD = 3000    # Min radius for spline points
-RANDOM_ENV_MAX_RAD = 3100    # Max radius for spline points
-
-# --- 5. CAMERA & MINIMAP ---
-DEFAULT_ZOOM = 1.00
+# --- 6. CAMERA & VISUALS ---
+DEFAULT_ZOOM = 1.0
 ZOOM_SPEED = 0.05
 
-MINIMAP_WIDTH = 250
-MINIMAP_HEIGHT = int(MINIMAP_WIDTH * (SCREEN_HEIGHT_PX / SCREEN_WIDTH_PX))
-MINIMAP_SCALE = MINIMAP_WIDTH / (RANDOM_ENV_MAX_RAD * 2 * 1.5)
-
-# --- 6. AESTHETICS ---
 FONT_NAME = 'Arial'
-FONT_SIZE = 24
+FONT_SIZE = 20
 
-SENSOR_BASE_RADIUS_PX = 4
+# --- ENVIRONMENT CONSTANTS ---
+STRAIGHT_ROAD_LENGTH_M = 100.0 # 100 Meters long
+LANE_COUNT = 3
 
+# Derived Environment Pixels
+STRAIGHT_ROAD_LENGTH_PX = STRAIGHT_ROAD_LENGTH_M * PPM
+ROAD_WIDTH_PX = LANE_WIDTH_PX * LANE_COUNT
+
+# Colors (R, G, B)
 COLORS = {
-    'bg_gray': (100, 100, 100),
+    'bg_gray': (50, 50, 50),
+    'car_body': (200, 50, 50),     # Red
+    'car_outline': (100, 0, 0),    # Dark Red
+    'wheels': (20, 20, 20),        # Black
+    'text': (255, 255, 255),
     'white_line': (255, 255, 255),
-    'car_red': (255, 0, 0),
-    'car_heading': (255, 255, 0),
-    'grass_green': (50, 150, 50),
     'sensor_beam': (0, 255, 0),
-    'sensor_base': (255, 255, 0),
-    'minimap_border': (0, 0, 0)
+    'debug': (255, 255, 0),
+    'road_gray': (80, 80, 80),
+    'grass_green': (34, 139, 34),
 }
 
-# Legacy Colors
+# Legacy color support (if other files need them directly)
 WHITE = (255, 255, 255)
-GRAY = (100, 100, 100)
-GREEN = (50, 150, 50)
-RED = (255, 0, 0)
-YELLOW = (255, 255, 0)
 BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
