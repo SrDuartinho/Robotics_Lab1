@@ -3,6 +3,10 @@ import numpy
 import pygame
 import sys
 import math
+from constants import (LANE_WIDTH_PX, LANE_COUNT, 
+                       SENSOR_RANGE_FRONT_PX, 
+                       SENSOR_RANGE_SIDE_PX, 
+                       SENSOR_RANGE_DIAG_PX)  # Import constants
 
 from car import Car
 from sensor import ForwardSensor
@@ -12,10 +16,8 @@ pygame.init()
 
 # Screen settings
 WIDTH, HEIGHT = 400, 600
-ROAD_WIDTH = 120
-ROAD_X = (WIDTH - ROAD_WIDTH) // 2
-LANE_COUNT = 1
-LANE_WIDTH = ROAD_WIDTH // LANE_COUNT
+ROAD_WIDTH = LANE_WIDTH_PX
+ROAD_X = (WIDTH - ROAD_WIDTH) // 2  # Center the road
 
 # Colors
 WHITE = (255, 255, 255)
@@ -28,16 +30,15 @@ clock = pygame.time.Clock()
 
 # Car + sensor + lane model
 car = Car()
-import math
 
 left_sensor = ForwardSensor(
     ray_angles=[-math.radians(40), -math.radians(20)],
-    ray_length=300
+    ray_length=SENSOR_RANGE_FRONT_PX
 )
 left_sensor.name = "left"
 right_sensor = ForwardSensor(
     ray_angles=[math.radians(20), math.radians(40)],
-    ray_length=300
+    ray_length=SENSOR_RANGE_FRONT_PX
 )
 right_sensor.name = "right"
 lane_model = Lane(ROAD_X, ROAD_WIDTH, HEIGHT)
@@ -67,7 +68,7 @@ def draw_road():
         line_offset = 0
     
     for i in range(1, LANE_COUNT):
-        x = ROAD_X + i * LANE_WIDTH
+        x = ROAD_X + i * (ROAD_WIDTH / LANE_COUNT)
         for y in range(-40 + line_offset, HEIGHT, 40):
             pygame.draw.line(screen, WHITE, (x, y), (x, y + 20), 4)
 
@@ -79,14 +80,14 @@ def draw_car():
     car_width = 40  # pixels
     car_length = 80  # length of car
     
-    front_x = x + math.cos(theta)*L
-    front_y = y + math.sin(theta)*L
+    front_x = x + math.cos(theta) * L
+    front_y = y + math.sin(theta) * L
     
     mid_x = (x + front_x) / 2
     mid_y = (y + front_y) / 2
     
-    steering_angle_x = front_x + math.cos(steer_dir)*L/2
-    steering_angle_y = front_y + math.sin(steer_dir)*L/2
+    steering_angle_x = front_x + math.cos(steer_dir) * L / 2
+    steering_angle_y = front_y + math.sin(steer_dir) * L / 2
     
     # ---- Draw car body as a rotated rectangle ----
     car_surf = pygame.Surface((car_length, car_width), pygame.SRCALPHA)  # transparent surface
@@ -139,7 +140,6 @@ def main():
                 if hit is not None:
                     pygame.draw.circle(screen, (255, 255, 0), (int(hit[0]), int(hit[1])), 4)
                     print(f"{sensor.name} sensor hit at {hit}")
-
 
         pygame.display.update()
         clock.tick(60)
