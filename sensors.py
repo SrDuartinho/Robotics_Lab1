@@ -2,7 +2,7 @@
 import numpy as np
 
 class ForwardSensor:
-    def __init__(self, ray_angles=[-0.15, 0.15], ray_length=300):
+    def __init__(self, ray_angles=[-0.15, 0.15], ray_length=500):
         """
         ray_angles: list of angles relative to car heading
         ray_length: pixel length of each ray
