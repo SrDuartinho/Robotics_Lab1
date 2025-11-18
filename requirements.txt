@@ -1,6 +1,4 @@
 pygame
 numpy
 matplotlib
-
-# TEMPORARY: remove
 scipy

@@ -1,4 +1,3 @@
-# car.py
 import numpy as np
 import math
 
@@ -41,4 +40,3 @@ class Car:
         fx = self.x + np.cos(self.theta) * self.L
         fy = self.y + np.sin(self.theta) * self.L
         return fx, fy
-   

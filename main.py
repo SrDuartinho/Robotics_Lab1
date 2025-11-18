@@ -3,41 +3,44 @@ import numpy
 import pygame
 import sys
 import math
+from constants import (LANE_WIDTH_PX, LANE_COUNT, 
+                       SENSOR_RANGE_FRONT_PX, 
+                       SENSOR_RANGE_SIDE_PX, 
+                       SENSOR_RANGE_DIAG_PX, 
+                       SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX)  # Import constants
 
 from car import Car
-from sensors import ForwardSensor
+from sensor import ForwardSensor
 from lane import Lane
+from viewport import Viewport  # Import Viewport class
 
 pygame.init()
 
 # Screen settings
-WIDTH, HEIGHT = 400, 600
-ROAD_WIDTH = 120
-ROAD_X = (WIDTH - ROAD_WIDTH) // 2
-LANE_COUNT = 1
-LANE_WIDTH = ROAD_WIDTH // LANE_COUNT
+WIDTH, HEIGHT = SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX
+ROAD_WIDTH = LANE_WIDTH_PX
+ROAD_X = (WIDTH - ROAD_WIDTH) // 2  # Center the road
 
 # Colors
 WHITE = (255, 255, 255)
 GRAY = (64, 64, 64)
 GREEN = (34, 177, 76)
 
-
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 
 # Car + sensor + lane model
 car = Car()
-import math
+viewport = Viewport(car.x, car.y)  # Initialize viewport with car's position
 
 left_sensor = ForwardSensor(
     ray_angles=[-math.radians(40), -math.radians(20)],
-    ray_length=300
+    ray_length=SENSOR_RANGE_FRONT_PX
 )
 left_sensor.name = "left"
 right_sensor = ForwardSensor(
     ray_angles=[math.radians(20), math.radians(40)],
-    ray_length=300
+    ray_length=SENSOR_RANGE_FRONT_PX
 )
 right_sensor.name = "right"
 lane_model = Lane(ROAD_X, ROAD_WIDTH, HEIGHT)
@@ -67,7 +70,7 @@ def draw_road():
         line_offset = 0
     
     for i in range(1, LANE_COUNT):
-        x = ROAD_X + i * LANE_WIDTH
+        x = ROAD_X + i * (ROAD_WIDTH / LANE_COUNT)
         for y in range(-40 + line_offset, HEIGHT, 40):
             pygame.draw.line(screen, WHITE, (x, y), (x, y + 20), 4)
 
@@ -79,14 +82,14 @@ def draw_car():
     car_width = 40  # pixels
     car_length = 80  # length of car
     
-    front_x = x + math.cos(theta)*L
-    front_y = y + math.sin(theta)*L
+    front_x = x + math.cos(theta) * L
+    front_y = y + math.sin(theta) * L
     
     mid_x = (x + front_x) / 2
     mid_y = (y + front_y) / 2
     
-    steering_angle_x = front_x + math.cos(steer_dir)*L/2
-    steering_angle_y = front_y + math.sin(steer_dir)*L/2
+    steering_angle_x = front_x + math.cos(steer_dir) * L / 2
+    steering_angle_y = front_y + math.sin(steer_dir) * L / 2
     
     # ---- Draw car body as a rotated rectangle ----
     car_surf = pygame.Surface((car_length, car_width), pygame.SRCALPHA)  # transparent surface
@@ -96,13 +99,13 @@ def draw_car():
     rotated_car = pygame.transform.rotate(car_surf, -math.degrees(theta))
     
     # Position the rotated rectangle so center matches car's (x, y)
-    rect = rotated_car.get_rect(center=(mid_x, mid_y))
+    rect = rotated_car.get_rect(center=(viewport.world_to_screen_scalar((mid_x, mid_y))))
     screen.blit(rotated_car, rect.topleft)
     
-    pygame.draw.circle(screen, (255, 0, 0), (int(x), int(y)), 8)
-    pygame.draw.line(screen, (255, 0, 0), (x, y), (front_x, front_y), 2)
-    pygame.draw.circle(screen, (255, 0, 0), (front_x, front_y), 8)
-    pygame.draw.line(screen, (255, 0, 0), (front_x, front_y), (steering_angle_x, steering_angle_y), 2)
+    pygame.draw.circle(screen, (255, 0, 0), viewport.world_to_screen_scalar((x, y)), 8)
+    pygame.draw.line(screen, (255, 0, 0), viewport.world_to_screen_scalar((x, y)), viewport.world_to_screen_scalar((front_x, front_y)), 2)
+    pygame.draw.circle(screen, (255, 0, 0), viewport.world_to_screen_scalar((front_x, front_y)), 8)
+    pygame.draw.line(screen, (255, 0, 0), viewport.world_to_screen_scalar((front_x, front_y)), viewport.world_to_screen_scalar((steering_angle_x, steering_angle_y)), 2)
 
 def main():
     running = True
@@ -126,6 +129,9 @@ def main():
         # --- Kinematic update ---
         car.step(V, omega_s, dt)
 
+        # --- Update viewport to follow car ---
+        viewport.update(car)
+
         # --- Draw everything ---
         draw_road()
         draw_car()
@@ -133,13 +139,18 @@ def main():
         # --- Draw sensor rays and intersections ---
         for sensor in [left_sensor, right_sensor]:
             for start, end in sensor.get_rays(car):
-                pygame.draw.line(screen, (0, 0, 255), start, end, 1)
+                # Keep start and end in world coordinates
+                start_screen = viewport.world_to_screen_scalar(start)
+                end_screen = viewport.world_to_screen_scalar(end)
+                pygame.draw.line(screen, (0, 0, 255), start_screen, end_screen, 1)
 
+                # Check for intersection in world coordinates
                 hit = lane_model.intersect_ray(start, end)
                 if hit is not None:
-                    pygame.draw.circle(screen, (255, 255, 0), (int(hit[0]), int(hit[1])), 4)
+                    # Convert hit point to screen coordinates for drawing
+                    hit_screen = viewport.world_to_screen_scalar(hit)
+                    pygame.draw.circle(screen, (255, 255, 0), hit_screen, 4)
                     print(f"{sensor.name} sensor hit at {hit}")
-
 
         pygame.display.update()
         clock.tick(60)
