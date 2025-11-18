@@ -1,13 +1,13 @@
-# camera.py
+import pygame
 import numpy as np
-from constants import SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX
+from constants import SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX, DEFAULT_ZOOM, ZOOM_SPEED
 
-class Camera:
+class Viewport:
     """
     Manages the viewport (pan and zoom).
     Translates WCS (World) coordinates to Screen (Pixel) coordinates.
     """
-    def __init__(self, x, y, zoom=1.0):
+    def __init__(self, x, y, zoom=DEFAULT_ZOOM):
         # WCS point the camera is looking at
         self.x = x
         self.y = y
@@ -19,7 +19,14 @@ class Camera:
         """Follows the car's WCS position."""
         self.x = car.x
         self.y = car.y
-        # (Add zoom input handling here if desired)
+        
+        # --- Handle Zoom Input (Optional) ---
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_EQUALS] or keys[pygame.K_PLUS]:
+             self.zoom = min(self.zoom + ZOOM_SPEED, 3.0) # Cap zoom in
+        if keys[pygame.K_MINUS]:
+             self.zoom = max(self.zoom - ZOOM_SPEED, 0.1) # Cap zoom out
+
 
     def world_to_screen_points(self, world_points_array):
         """
@@ -28,7 +35,7 @@ class Camera:
         if world_points_array.size == 0:
             return np.array([])
             
-        # 1. Translate points relative to camera
+        # 1. Translate points relative to camera's WCS position
         relative_points = world_points_array - np.array([self.x, self.y])
         
         # 2. Scale by zoom
@@ -41,5 +48,11 @@ class Camera:
 
     def world_to_screen_scalar(self, world_pos_tuple):
         """Helper function to convert a single (x, y) WCS tuple."""
-        screen_point = self.world_to_screen_points(np.array([world_pos_tuple]))
+        # Convert tuple to numpy array for the function
+        world_pos_array = np.array([world_pos_tuple])
+        screen_point = self.world_to_screen_points(world_pos_array)
         return tuple(screen_point[0])
+
+    def world_to_screen_poly(self, poly_points):
+        """Alias for world_to_screen_points, for clarity."""
+        return self.world_to_screen_points(poly_points)
