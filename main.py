@@ -10,14 +10,27 @@ from constants import *
 from enviroment import StraightEnvironment
 import sys
 
-def handle_sensors(screen,car, lane_model, left_sensor, right_sensor):
+def handle_sensors(screen, car, lane_model, left_sensor, right_sensor, viewport):
+    """Draw sensor rays using viewport to convert world -> screen coords.
+
+    Intersection tests use world coordinates; drawing uses screen
+    coordinates so rays align with the rendered scene and aren't
+    overwritten.
+    """
     for sensor in [left_sensor, right_sensor]:
         for start, end in sensor.get_rays(car):
-            pygame.draw.line(screen, (0, 0, 255), start, end, 1)
-
+            # Intersection in world coords
             hit = lane_model.intersect_ray(start, end)
+
+            # Convert to screen coords for drawing
+            screen_start = viewport.world_to_screen_scalar(start)
+            screen_end = viewport.world_to_screen_scalar(end)
+
+            pygame.draw.line(screen, (0, 0, 255), screen_start, screen_end, 1)
+
             if hit is not None:
-                pygame.draw.circle(screen, (255, 255, 0), (int(hit[0]), int(hit[1])), 4)
+                hit_screen = viewport.world_to_screen_scalar(hit)
+                pygame.draw.circle(screen, (255, 255, 0), (int(hit_screen[0]), int(hit_screen[1])), 4)
                 print(f"{sensor.name} sensor hit at {hit}")
                 
 def handle_input():
@@ -107,7 +120,9 @@ def main():
         # Rendering
         renderer.render_environment(env)
         renderer.render_car(car)
-        handle_sensors(screen,car, lane_model, left_sensor, right_sensor)
+
+        # Draw sensors on top (convert world -> screen with viewport)
+        handle_sensors(screen, car, lane_model, left_sensor, right_sensor, viewport)
         
         draw_hud(screen, car, clock)
         
