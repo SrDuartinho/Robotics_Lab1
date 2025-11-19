@@ -103,11 +103,11 @@ def main():
         v_cmd, s_cmd = handle_input()
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
-        handle_sensors(screen,car, lane_model, left_sensor, right_sensor)
         
         # Rendering
         renderer.render_environment(env)
         renderer.render_car(car)
+        handle_sensors(screen,car, lane_model, left_sensor, right_sensor)
         
         draw_hud(screen, car, clock)
         
