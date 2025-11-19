@@ -85,12 +85,12 @@ def main():
     # --- 3. SETUP SENSORS ---
     left_sensor = ForwardSensor(
         ray_angles=[-math.radians(40), -math.radians(20)],
-        ray_length=300
+        ray_length=500
     )
     left_sensor.name = "left"
     right_sensor = ForwardSensor(
         ray_angles=[math.radians(20), math.radians(40)],
-        ray_length=300
+        ray_length=500
     )
     right_sensor.name = "right"
     

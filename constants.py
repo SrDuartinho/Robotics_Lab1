@@ -65,7 +65,7 @@ FONT_NAME = 'Arial'
 FONT_SIZE = 20
 
 # --- ENVIRONMENT CONSTANTS ---
-STRAIGHT_ROAD_LENGTH_M = 100.0 # 100 Meters long
+STRAIGHT_ROAD_LENGTH_M = 500.0 # 100 Meters long
 LANE_COUNT = 3
 
 # Derived Environment Pixels

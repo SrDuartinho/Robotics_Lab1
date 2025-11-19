@@ -37,6 +37,20 @@ class Lane:
             if 0 < t < 1:
                 y = py + t * dy
                 intersections.append((self.right_x, y))
+                
+        # intersection with left non continuous boundary x = left_disc_x
+        if dx != 0:
+            t = (self.left_disc_x - px) / dx
+            if 0 < t < 1:
+                y = py + t * dy
+                intersections.append((self.left_disc_x, y))
+
+        # intersection with right non continuous boundary x = right_disc_x
+        if dx != 0:
+            t = (self.right_disc_x - px) / dx
+            if 0 < t < 1:
+                y = py + t * dy
+                intersections.append((self.right_disc_x, y))
 
         if not intersections:
             return None
