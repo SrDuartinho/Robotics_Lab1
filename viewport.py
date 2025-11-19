@@ -15,7 +15,7 @@ class Viewport:
         
     @property
     def screen_center(self):
-        return np.array([SCREEN_WIDTH_PX / 2, SCREEN_HEIGHT_PX / 2])
+        return np.array([SCREEN_WIDTH_PX / 2, SCREEN_HEIGHT_PX / 1.2])
         
     def update(self, car):
         """Follows the car's WCS position."""
