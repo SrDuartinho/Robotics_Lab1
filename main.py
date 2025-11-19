@@ -5,35 +5,50 @@ from car import Car
 from sensors import ForwardSensor
 from lane import Lane
 from viewport import Viewport
+from plot import LiveSensorPlot
 from renderer import Renderer
 from constants import *
 from enviroment import StraightEnvironment
 import sys
 
-def handle_sensors(screen, car, lane_model, left_sensor, right_sensor, viewport):
+def handle_sensors(screen, plotter, car, lane_model, left_sensor, right_sensor, viewport):
     """Draw sensor rays using viewport to convert world -> screen coords.
 
     Intersection tests use world coordinates; drawing uses screen
     coordinates so rays align with the rendered scene and aren't
     overwritten.
     """
+    distances = []   # store up to 4 distances
+
     for sensor in [left_sensor, right_sensor]:
-        for start, end in sensor.get_rays(car):
-            # Intersection in world coords
+        rays = sensor.get_rays(car)
+
+        for start, end in rays:
             hit = lane_model.intersect_ray(start, end)
 
-            # Convert to screen coords for drawing
+            # Draw rays (screen coordinates)
             screen_start = viewport.world_to_screen_scalar(start)
             screen_end = viewport.world_to_screen_scalar(end)
-
             pygame.draw.line(screen, (0, 0, 255), screen_start, screen_end, 1)
 
             if hit is not None:
+                # Draw hit point
                 hit_screen = viewport.world_to_screen_scalar(hit)
-                pygame.draw.circle(screen, (255, 255, 0), (int(hit_screen[0]), int(hit_screen[1])), 4)
-                print(f"{sensor.name} sensor hit at {hit}")
+                pygame.draw.circle(screen, (255, 255, 0),
+                                   (int(hit_screen[0]), int(hit_screen[1])), 4)
+
+                # Compute world distance
+                dist = np.linalg.norm(np.array(hit) - np.array(start))
+                distances.append(dist)
+
+    # If fewer than 4 hits, pad with None or 0 so the plotter always receives 4 values
+    while len(distances) < 4:
+        distances.append(None)
+
+    # Update the plotter with all 4 distances
+    plotter.update(distances)
                 
-def handle_input():
+def handle_input(car):
     """
     Process keyboard input and return control commands.
     
@@ -56,7 +71,11 @@ def handle_input():
         omega_s = -STEER_RATE_RPS  # Turn left (increase phi)
     elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
         omega_s = STEER_RATE_RPS  # Turn right (decrease phi)
-    
+    else:
+        if car.phi < 0.0:
+            omega_s = STEER_RATE_RPS
+        if car.phi > 0.0:
+            omega_s = -STEER_RATE_RPS
     return V, omega_s
 
 
@@ -65,6 +84,7 @@ def main():
     screen = pygame.display.set_mode((SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX))
     pygame.display.set_caption(WINDOW_TITLE)
     clock = pygame.time.Clock()
+    plotter = LiveSensorPlot()
     
     # --- 1. SETUP ENVIRONMENT ---
     env = StraightEnvironment()
@@ -113,7 +133,7 @@ def main():
                     car.reset(sx, sy, st)
 
         # Logic
-        v_cmd, s_cmd = handle_input()
+        v_cmd, s_cmd = handle_input(car)
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
         
@@ -122,7 +142,7 @@ def main():
         renderer.render_car(car)
 
         # Draw sensors on top (convert world -> screen with viewport)
-        handle_sensors(screen, car, lane_model, left_sensor, right_sensor, viewport)
+        handle_sensors(screen, plotter, car, lane_model, left_sensor, right_sensor, viewport)
         
         draw_hud(screen, car, clock)
         
