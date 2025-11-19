@@ -1,12 +1,25 @@
 import pygame
+import math
 import numpy as np
 from car import Car
+from sensors import ForwardSensor
+from lane import Lane
 from viewport import Viewport
 from renderer import Renderer
 from constants import *
 from enviroment import StraightEnvironment
 import sys
 
+def handle_sensors(screen,car, lane_model, left_sensor, right_sensor):
+    for sensor in [left_sensor, right_sensor]:
+        for start, end in sensor.get_rays(car):
+            pygame.draw.line(screen, (0, 0, 255), start, end, 1)
+
+            hit = lane_model.intersect_ray(start, end)
+            if hit is not None:
+                pygame.draw.circle(screen, (255, 255, 0), (int(hit[0]), int(hit[1])), 4)
+                print(f"{sensor.name} sensor hit at {hit}")
+                
 def handle_input():
     """
     Process keyboard input and return control commands.
@@ -43,6 +56,8 @@ def main():
     # --- 1. SETUP ENVIRONMENT ---
     env = StraightEnvironment()
     
+    lane_model = Lane(env.get_roadx(), LANE_WIDTH_PX, SCREEN_HEIGHT_PX)
+    
     # --- 2. SETUP CAR (Using Env Spawn Point) ---
     start_x, start_y, start_theta = env.get_start_pose()
     
@@ -54,8 +69,19 @@ def main():
         max_steer=MAX_STEER_ANGLE_RAD,
         steer_rate=STEER_RATE_RPS
     )
+    # --- 3. SETUP SENSORS ---
+    left_sensor = ForwardSensor(
+        ray_angles=[-math.radians(40), -math.radians(20)],
+        ray_length=300
+    )
+    left_sensor.name = "left"
+    right_sensor = ForwardSensor(
+        ray_angles=[math.radians(20), math.radians(40)],
+        ray_length=300
+    )
+    right_sensor.name = "right"
     
-    # --- 3. SETUP VIEW ---
+    # --- 4. SETUP VIEW ---
     viewport = Viewport(car.x, car.y)
     renderer = Renderer(screen, viewport)
     
@@ -77,6 +103,7 @@ def main():
         v_cmd, s_cmd = handle_input()
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
+        handle_sensors(screen,car, lane_model, left_sensor, right_sensor)
         
         # Rendering
         renderer.render_environment(env)

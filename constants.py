@@ -13,10 +13,10 @@ PPM = 50  # Pixels Per Meter (50 px = 1 m)
 
 # --- 3. REAL-WORLD CONSTANTS (METERS & SECONDS) ---
 # Physical Dimensions
-CAR_LENGTH_M = 4.5
-CAR_WIDTH_M = 2.0
-CAR_WHEELBASE_M = 2.8      # Distance between front and rear axles
-LANE_WIDTH_M = 3.7
+CAR_LENGTH_M = 3
+CAR_WIDTH_M = 1.5
+CAR_WHEELBASE_M = 2      # Distance between front and rear axles
+LANE_WIDTH_M = 4
 WHITE_LINE_WIDTH_M = 0.15
 
 # Motion Limits

@@ -84,3 +84,11 @@ class Car:
         self.phi = 0.0
         self._last_V = 0.0
         self._last_omega_s = 0.0
+        
+    def get_front_center(self):
+        """
+        Returns location of the point at the front bumper.
+        """
+        fx = self.x + np.cos(self.theta) * self.L
+        fy = self.y + np.sin(self.theta) * self.L
+        return fx, fy

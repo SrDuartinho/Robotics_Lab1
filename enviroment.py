@@ -88,3 +88,11 @@ class StraightEnvironment:
         """Returns the ideal spawn point for the car."""
         # Spawn in the center lane, slightly up from the bottom
         return self.start_x, self.start_y - 100, self.start_theta
+    
+    def get_roadx (self):
+        cont_lines_x = self.width / 2
+        dash_lines_x = -cont_lines_x + LANE_WIDTH_PX
+        
+        return cont_lines_x, dash_lines_x
+    
+     
