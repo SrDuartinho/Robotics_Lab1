@@ -3,15 +3,14 @@ import math
 import numpy as np
 from car import Car
 from sensors import ForwardSensor
-from lane import Lane
 from viewport import Viewport
 from plot import LiveSensorPlot
 from renderer import Renderer
 from constants import *
-from enviroment import StraightEnvironment
+from enviroment import *
 import sys
 
-def handle_sensors(screen, plotter, car, lane_model, left_sensor, right_sensor, viewport):
+def handle_sensors(screen, plotter, car, env, left_sensor, right_sensor, viewport):
     """Draw sensor rays using viewport to convert world -> screen coords.
 
     Intersection tests use world coordinates; drawing uses screen
@@ -24,7 +23,7 @@ def handle_sensors(screen, plotter, car, lane_model, left_sensor, right_sensor, 
         rays = sensor.get_rays(car)
 
         for start, end in rays:
-            hit = lane_model.intersect_ray(start, end)
+            hit = env.intersect_ray(start, end)
 
             # Draw rays (screen coordinates)
             screen_start = viewport.world_to_screen_scalar(start)
@@ -87,9 +86,7 @@ def main():
     plotter = LiveSensorPlot()
     
     # --- 1. SETUP ENVIRONMENT ---
-    env = StraightEnvironment()
-    
-    lane_model = Lane(env.get_roadx(), LANE_WIDTH_PX, SCREEN_HEIGHT_PX)
+    env = CurvedEnvironment()
     
     # --- 2. SETUP CAR (Using Env Spawn Point) ---
     start_x, start_y, start_theta = env.get_start_pose()
@@ -102,12 +99,14 @@ def main():
         max_steer=MAX_STEER_ANGLE_RAD,
         steer_rate=STEER_RATE_RPS
     )
+    
     # --- 3. SETUP SENSORS ---
     left_sensor = ForwardSensor(
         ray_angles=[-math.radians(40), -math.radians(20)],
         ray_length=500
     )
     left_sensor.name = "left"
+    
     right_sensor = ForwardSensor(
         ray_angles=[math.radians(20), math.radians(40)],
         ray_length=500
@@ -118,20 +117,29 @@ def main():
     viewport = Viewport(car.x, car.y)
     renderer = Renderer(screen, viewport)
     
+    # --- 5. MAIN LOOP ---
     running = True
+    paused = False
     while running:
         dt = clock.tick(FPS) / 1000.0
         
         # Event Handling
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: running = False
+            if event.type == pygame.QUIT: 
+                running = False
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE: running = False
+                if event.key == pygame.K_ESCAPE: 
+                    running = False
                 if event.key == pygame.K_r: 
                     # Reset to Env Spawn
                     sx, sy, st = env.get_start_pose()
                     car.reset(sx, sy, st)
+                if event.key == pygame.K_SPACE:
+                    paused = not paused
 
+        if paused:
+            continue
+        
         # Logic
         v_cmd, s_cmd = handle_input(car)
         car.update(v_cmd, s_cmd, dt)
@@ -142,7 +150,7 @@ def main():
         renderer.render_car(car)
 
         # Draw sensors on top (convert world -> screen with viewport)
-        handle_sensors(screen, plotter, car, lane_model, left_sensor, right_sensor, viewport)
+        handle_sensors(screen, plotter, car, env, left_sensor, right_sensor, viewport)
         
         draw_hud(screen, car, clock)
         
@@ -173,7 +181,7 @@ def draw_hud(screen, car, clock):
     # Render text
     y_offset = 10
     for line in lines:
-        text_surface = font.render(line, True, WHITE)
+        text_surface = font.render(line, True, COLORS['text'])
         screen.blit(text_surface, (10, y_offset))
         y_offset += 30
 
