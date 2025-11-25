@@ -9,44 +9,54 @@ from renderer import Renderer
 from constants import *
 from enviroment import *
 import sys
+def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
-def handle_sensors(screen, plotter, car, env, left_sensor, right_sensor, viewport):
-    """Draw sensor rays using viewport to convert world -> screen coords.
-
-    Intersection tests use world coordinates; drawing uses screen
-    coordinates so rays align with the rendered scene and aren't
-    overwritten.
-    """
-    distances = []   # store up to 4 distances
+    ray_distances = []   # list of (distance, relative_angle)
 
     for sensor in [left_sensor, right_sensor]:
         rays = sensor.get_rays(car)
 
-        for start, end in rays:
+        for idx, (start, end) in enumerate(rays):
             hit = env.intersect_ray(start, end)
 
-            # Draw rays (screen coordinates)
+            # draw the rays
             screen_start = viewport.world_to_screen_scalar(start)
             screen_end = viewport.world_to_screen_scalar(end)
             pygame.draw.line(screen, (0, 0, 255), screen_start, screen_end, 1)
 
+            # get the sensor's own relative angle
+            relative_angle = sensor.ray_angles[idx]
+
             if hit is not None:
-                # Draw hit point
                 hit_screen = viewport.world_to_screen_scalar(hit)
-                pygame.draw.circle(screen, (255, 255, 0),
-                                   (int(hit_screen[0]), int(hit_screen[1])), 4)
+                pygame.draw.circle(
+                    screen, (255, 255, 0),
+                    (int(hit_screen[0]), int(hit_screen[1])), 4
+                )
 
-                # Compute world distance
                 dist = np.linalg.norm(np.array(hit) - np.array(start))
-                distances.append(dist)
 
-    # If fewer than 4 hits, pad with None or 0 so the plotter always receives 4 values
-    while len(distances) < 4:
-        distances.append(None)
+                # store both the distance and the angle of the ray
+                ray_distances.append((dist, relative_angle))
 
-    # Update the plotter with all 4 distances
-    plotter.update(distances)
-                
+            else:
+                ray_distances.append((None, relative_angle))
+
+    # filter valid rays
+    valid = [(d, ang) for (d, ang) in ray_distances if d is not None]
+    if not valid:
+        return None
+
+    # find ray with minimum raw distance
+    raw_min_dist, ang = min(valid, key=lambda v: v[0])
+    print (raw_min_dist)
+    # perpendicular (lane-normal) distance
+    perpendicular_distance = raw_min_dist * math.cos(ang)
+
+    return perpendicular_distance
+
+
+
 def handle_input(car):
     """
     Process keyboard input and return control commands.
@@ -150,8 +160,8 @@ def main():
         renderer.render_car(car)
 
         # Draw sensors on top (convert world -> screen with viewport)
-        handle_sensors(screen, plotter, car, env, left_sensor, right_sensor, viewport)
-        
+        min_distance = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
+        plotter.update(min_distance)
         draw_hud(screen, car, clock)
         
         pygame.display.flip()
