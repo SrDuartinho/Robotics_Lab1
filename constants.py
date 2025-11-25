@@ -20,7 +20,7 @@ LANE_WIDTH_M = 4
 WHITE_LINE_WIDTH_M = 0.15
 
 # Motion Limits
-MAX_SPEED_MPS = 10.0
+MAX_SPEED_MPS = 5.0
 REVERSE_SPEED_FACTOR = 0.5              # Reverse is half max speed
 MAX_STEER_ANGLE_DEG = 35.0
 STEER_RATE_DPS = 30.0                   # Degrees per second

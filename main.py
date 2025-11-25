@@ -49,14 +49,15 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
     # find ray with minimum raw distance
     raw_min_dist, ang = min(valid, key=lambda v: v[0])
-    print (raw_min_dist)
+    _,_,thetha, _,_= car.get_state()
+    print (raw_min_dist, ang + thetha)
     # perpendicular (lane-normal) distance
-    perpendicular_distance = raw_min_dist * math.cos(ang)
+    perpendicular_distance = raw_min_dist * abs(math.cos(thetha + ang))
 
     return perpendicular_distance
 
 
-
+ 
 def handle_input(car):
     """
     Process keyboard input and return control commands.
