@@ -49,10 +49,26 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
     # find ray with minimum raw distance
     raw_min_dist, ang = min(valid, key=lambda v: v[0])
-    _,_,thetha, _,_= car.get_state()
-    print (raw_min_dist, ang + thetha)
-    # perpendicular (lane-normal) distance
-    perpendicular_distance = raw_min_dist * abs(math.cos(thetha + ang))
+    _, _, theta, _, _ = car.get_state()
+
+    perpendicular_distance = raw_min_dist * abs(math.cos(theta + ang))
+
+    # Direction of the lane normal (horizontal)
+    lane_normal = np.array([1.0, 0.0])   # to the right
+
+    # Decide whether normal should point left or right
+    if ang < 0:
+        lane_normal = -lane_normal   # flip to left side
+
+    # Now compute end point for perpendicular distance
+    end_world = np.array(start) + perpendicular_distance * lane_normal
+
+    # Draw to screen
+    screen_start = viewport.world_to_screen_scalar(start)
+    end_pos_screen = viewport.world_to_screen_scalar(end_world)
+
+    pygame.draw.line(screen, (255, 0, 0), screen_start, end_pos_screen, 2)
+
 
     return perpendicular_distance
 
