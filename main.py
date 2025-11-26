@@ -12,10 +12,11 @@ import sys
 def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
     ray_distances = []   # list of (distance, relative_angle)
+    sensor_points = []   # list of (x, y) of hit points
 
     for sensor in [left_sensor, right_sensor]:
         rays = sensor.get_rays(car)
-
+        
         for idx, (start, end) in enumerate(rays):
             hit = env.intersect_ray(start, end)
 
@@ -34,6 +35,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
                     (int(hit_screen[0]), int(hit_screen[1])), 4
                 )
 
+            
                 dist = np.linalg.norm(np.array(hit) - np.array(start))
 
                 # store both the distance and the angle of the ray
@@ -41,17 +43,41 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
             else:
                 ray_distances.append((None, relative_angle))
-
+            
+            sensor_points.append ((np.array(hit)))
+    
     # filter valid rays
     valid = [(d, ang) for (d, ang) in ray_distances if d is not None]
     if not valid:
         return None
+    
+    p1 = sensor_points[0]
+    p2 = sensor_points[1]
 
+    #v = p2 - p1      # vector from P1 to P2
+    
+    print (sensor_points)
+    """
+    y_axis = np.array([0.0, 1.0])  # global Y axis
+
+    # normalize vector v
+    v_norm = v / np.linalg.norm(v)
+
+    # dot product gives cos(theta)
+    cos_theta = np.dot(v_norm, y_axis)
+
+    # clamp to valid domain to avoid floating-point error
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+
+    angle = math.acos(cos_theta)
+
+    print("Angle between sensors and Y axis:", angle)
+    """
     # find ray with minimum raw distance
     raw_min_dist, ang = min(valid, key=lambda v: v[0])
     _, _, theta, _, _ = car.get_state()
 
-    perpendicular_distance = raw_min_dist * abs(math.cos(theta + ang))
+    perpendicular_distance = raw_min_dist * abs(math.cos((theta) + ang))
 
     # Direction of the lane normal (horizontal)
     lane_normal = np.array([1.0, 0.0])   # to the right

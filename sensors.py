@@ -24,3 +24,4 @@ class ForwardSensor:
             rays.append(((fx, fy), (end_x, end_y)))
 
         return rays
+    
