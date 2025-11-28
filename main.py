@@ -9,6 +9,8 @@ from renderer import Renderer
 from constants import *
 from enviroment import *
 import sys
+
+
 def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
     ray_distances = []   # list of (distance, relative_angle)
@@ -109,27 +111,45 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     # compute the angle
     v = p2 - p1
     road_angle = np.arctan2(v[0], v[1])
-    print (road_angle)
     
     _, _, theta, _, _ = car.get_state()
 
     perpendicular_distance = raw_min_dist * abs(math.cos((theta+road_angle) + ang))
 
-    # Direction of the lane normal (horizontal)
-    lane_normal = np.array([1.0, 0.0])   # to the right
 
-    # Decide whether normal should point left or right
-    if ang < 0:
-        lane_normal = -lane_normal   # flip to left side
+    if np.linalg.norm(v) < 1e-8:
+        # degenerate — don't draw
+        return perpendicular_distance
 
-    # Now compute end point for perpendicular distance
-    end_world = np.array(start) + perpendicular_distance * lane_normal
+    # tangent angle relative to X-axis (standard math convention)
+    tangent_angle = math.atan2(v[1], v[0])
 
-    # Draw to screen
-    screen_start = viewport.world_to_screen_scalar(start)
-    end_pos_screen = viewport.world_to_screen_scalar(end_world)
+    # normal is tangent rotated by +90 degrees
+    normal_angle = tangent_angle + math.pi / 2.0
 
+    # unit normal vector
+    lane_normal = np.array([math.cos(normal_angle), math.sin(normal_angle)], dtype=float)
+
+    # If you want the normal to point to the car side (match your 'ang' sign),
+    # flip it when necessary (ang < 0 means left-side sensor in your code).
+    # You might need to invert the sign depending on your coordinate convention.
+    print (lane_normal)
+
+    lane_normal = -lane_normal
+
+    print(ang, lane_normal)
+    # make sure it's normalized (safety)
+    lane_normal = lane_normal / np.linalg.norm(lane_normal)
+
+    # compute endpoint in world coordinates
+    end_world = start + perpendicular_distance * lane_normal
+
+    # draw line in screen coords
+    screen_start = viewport.world_to_screen_scalar(tuple(start))
+    end_pos_screen = viewport.world_to_screen_scalar(tuple(end_world))
     pygame.draw.line(screen, (255, 0, 0), screen_start, end_pos_screen, 2)
+
+
 
 
     return perpendicular_distance
