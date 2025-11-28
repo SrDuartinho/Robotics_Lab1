@@ -12,7 +12,7 @@ class ForwardSensor:
 
     def get_rays(self, car):
         cx, cy, theta, _, _= car.get_state()
-        fx, fy = car.get_front_center()
+        fx, fy = car.get_center()
 
         rays = []
         for ang in self.ray_angles:

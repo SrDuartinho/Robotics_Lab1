@@ -92,3 +92,11 @@ class Car:
         fx = self.x + np.cos(self.theta) * self.L
         fy = self.y + np.sin(self.theta) * self.L
         return fx, fy
+    
+    def get_center(self):
+        """
+        Returns location of the center of the car (midpoint between axles).
+        """
+        cx = self.x + np.cos(self.theta) * (self.L / 2.0)
+        cy = self.y + np.sin(self.theta) * (self.L / 2.0)
+        return cx, cy
