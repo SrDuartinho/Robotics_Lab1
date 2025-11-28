@@ -39,24 +39,20 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
                 dist = np.linalg.norm(np.array(hit) - np.array(start))
 
                 # store both the distance and the angle of the ray
-                ray_distances.append((dist, relative_angle))
-
+                ray_distances.append((dist, relative_angle, hit))
+                sensor_points.append ((np.array(hit)))
             else:
-                ray_distances.append((None, relative_angle))
+                ray_distances.append((None, relative_angle, None))
+                sensor_points.append (None)
+
             
-            sensor_points.append ((np.array(hit)))
+            
     
     # filter valid rays
-    valid = [(d, ang) for (d, ang) in ray_distances if d is not None]
+    valid = [(d, ang, p) for (d, ang, p) in ray_distances if d is not None]
     if not valid:
         return None
-    
-    p1 = sensor_points[0]
-    p2 = sensor_points[1]
 
-    #v = p2 - p1      # vector from P1 to P2
-    
-    print (sensor_points)
     """
     y_axis = np.array([0.0, 1.0])  # global Y axis
 
@@ -74,10 +70,50 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     print("Angle between sensors and Y axis:", angle)
     """
     # find ray with minimum raw distance
-    raw_min_dist, ang = min(valid, key=lambda v: v[0])
+    raw_min_dist, ang, min_hit = min(valid, key=lambda v: v[0])
+    
+    # Primary match
+    p1 = None
+    p2 = None
+
+    for i in range(len(sensor_points)):
+        if sensor_points[i] is not None and np.array_equal(sensor_points[i], min_hit):
+
+            # try neighbor
+            if i+1 < len(sensor_points) and sensor_points[i+1] is not None:
+                if sensor_points[1] is None:
+                    p1 = sensor_points[2]
+                    p2 = sensor_points[3]
+                else:
+                    p1 = sensor_points[i]
+                    p2 = sensor_points[i+1]
+
+            # fallback: right side hits available
+            elif sensor_points[2] is not None and sensor_points[3] is not None:
+                p1 = sensor_points[2]
+                p2 = sensor_points[3]
+
+            # fallback: left side hits available
+            elif sensor_points[0] is not None and sensor_points[1] is not None:
+                p1 = sensor_points[0]
+                p2 = sensor_points[1]
+
+
+            break
+
+    # final guard
+    if p1 is None or p2 is None:
+        print("No valid p1/p2 found")
+        return None
+
+    # compute the angle
+    v = p2 - p1
+    road_angle = np.arctan2(v[0], v[1])
+    print (road_angle)
+    
     _, _, theta, _, _ = car.get_state()
 
-    perpendicular_distance = raw_min_dist * abs(math.cos((theta) + ang))
+    perpendicular_distance = raw_min_dist * abs(math.cos((theta+road_angle) + ang))
 
     # Direction of the lane normal (horizontal)
     lane_normal = np.array([1.0, 0.0])   # to the right
