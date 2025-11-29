@@ -55,22 +55,6 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     if not valid:
         return None
 
-    """
-    y_axis = np.array([0.0, 1.0])  # global Y axis
-
-    # normalize vector v
-    v_norm = v / np.linalg.norm(v)
-
-    # dot product gives cos(theta)
-    cos_theta = np.dot(v_norm, y_axis)
-
-    # clamp to valid domain to avoid floating-point error
-    cos_theta = np.clip(cos_theta, -1.0, 1.0)
-
-    angle = math.acos(cos_theta)
-
-    print("Angle between sensors and Y axis:", angle)
-    """
     # find ray with minimum raw distance
     raw_min_dist, ang, min_hit = min(valid, key=lambda v: v[0])
     
@@ -133,11 +117,9 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     # If you want the normal to point to the car side (match your 'ang' sign),
     # flip it when necessary (ang < 0 means left-side sensor in your code).
     # You might need to invert the sign depending on your coordinate convention.
-    print (lane_normal)
 
     lane_normal = -lane_normal
 
-    print(ang, lane_normal)
     # make sure it's normalized (safety)
     lane_normal = lane_normal / np.linalg.norm(lane_normal)
 
@@ -148,8 +130,6 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     screen_start = viewport.world_to_screen_scalar(tuple(start))
     end_pos_screen = viewport.world_to_screen_scalar(tuple(end_world))
     pygame.draw.line(screen, (255, 0, 0), screen_start, end_pos_screen, 2)
-
-
 
 
     return perpendicular_distance
