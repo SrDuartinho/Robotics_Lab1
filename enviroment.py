@@ -4,28 +4,41 @@ from constants import *
 
 class Environment:
     """Base class for environments to handle common intersection logic."""
+    
     def intersect_ray(self, ray_start, ray_end):
         """
-        Finds the closest intersection between a sensor ray and ANY road line.
-        ray_start, ray_end: Tuples or arrays (x, y) in WCS.
+        Find the closest intersection, but ensuring consistency:
+        First get the closest hit on EACH boundary line,
+        then pick the globally closest hit.
         """
-        closest_hit = None
-        min_dist = float('inf')
-        
-        # Check against every segment of every line
-        # self.boundary_lines is a list of lists: [ [((x1,y1),(x2,y2)), ...], [...] ]
+
+        best_hit = None
+        best_dist = float('inf')
+
+        # Loop through each boundary polyline
         for line_segments in self.boundary_lines:
+
+            line_closest = None
+            line_min_dist = float('inf')
+
+            # Find the closest hit *on this line only*
             for seg_start, seg_end in line_segments:
                 hit = self._get_line_intersection(ray_start, ray_end, seg_start, seg_end)
-                
+
                 if hit:
                     dist = np.hypot(ray_start[0] - hit[0], ray_start[1] - hit[1])
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_hit = hit
-                        
-        return closest_hit
+                    if dist < line_min_dist:
+                        line_min_dist = dist
+                        line_closest = hit
 
+            # If this line had any hit, compare to the best line-hit
+            if line_closest and line_min_dist < best_dist:
+                best_dist = line_min_dist
+                best_hit = line_closest
+
+        return best_hit
+    
+    
     def _get_line_intersection(self, p0, p1, p2, p3):
         """
         Math helper: Intersection of two line segments (Ray vs Road Segment).
@@ -130,10 +143,10 @@ class CurvedEnvironment(Environment):
         # 1. Configuration
         self.width = ROAD_WIDTH_PX
         self.straight_len = STRAIGHT_ROAD_LENGTH_PX / 5
-        self.turn_radius = 200
-        self.turn_angle_deg = 30
+        self.turn_radius = 4000
+        self.turn_angle_deg = 35
         self.exit_len = STRAIGHT_ROAD_LENGTH_PX / 5
-        self.resolution = 30
+        self.resolution = 100
 
         self.start_x = 0
         self.start_y = 0

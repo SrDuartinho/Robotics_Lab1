@@ -132,7 +132,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     pygame.draw.line(screen, (255, 0, 0), screen_start, end_pos_screen, 2)
 
 
-    return perpendicular_distance
+    return perpendicular_distance, tangent_angle
 
 
  
@@ -165,7 +165,6 @@ def handle_input(car):
         if car.phi > 0.0:
             omega_s = -STEER_RATE_RPS
     return V, omega_s
-
 
 def main():
     pygame.init()
@@ -232,6 +231,7 @@ def main():
         # Logic
         v_cmd, s_cmd = handle_input(car)
         car.update(v_cmd, s_cmd, dt)
+        
         viewport.update(car)
         
         # Rendering
@@ -239,7 +239,7 @@ def main():
         renderer.render_car(car)
 
         # Draw sensors on top (convert world -> screen with viewport)
-        min_distance = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
+        min_distance, _ = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
         plotter.update(min_distance)
         draw_hud(screen, car, clock)
         
