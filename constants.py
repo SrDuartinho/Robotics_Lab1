@@ -16,7 +16,7 @@ PPM = 25  # Pixels Per Meter (50 px = 1 m)
 CAR_LENGTH_M = 3
 CAR_WIDTH_M = 1.5
 CAR_WHEELBASE_M = 2                     # Distance between front and rear axles
-LANE_WIDTH_M = 5
+LANE_WIDTH_M = 6
 WHITE_LINE_WIDTH_M = 0.15
 
 # Motion Limits
