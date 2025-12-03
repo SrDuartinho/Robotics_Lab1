@@ -217,11 +217,11 @@ def car_robot_control(car, dist, road_angle, side):
     """
     # --- TUNING PARAMETERS ---
     # Ks: Heading Gain. Controls how fast we align to the road.
-    Ks = 6.0  
+    Ks = 100 
     
     # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
     # Higher = stronger push when close to the line.
-    Kl = 0.15 
+    Kl = 0.3
     
     # --- 1. CALCULATE HEADING ERROR (e_theta) ---
     _, _, theta, _, _ = car.get_state()
