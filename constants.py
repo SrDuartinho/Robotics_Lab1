@@ -84,3 +84,5 @@ COLORS = {
     'debug': (255, 255, 0),
     'road_gray': (80, 80, 80),
 }
+
+LTA_THRESHOLD = 30.0

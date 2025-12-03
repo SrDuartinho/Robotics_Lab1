@@ -37,7 +37,6 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
                     (int(hit_screen[0]), int(hit_screen[1])), 4
                 )
 
-            
                 dist = np.linalg.norm(np.array(hit) - np.array(start))
 
                 # store both the distance and the angle of the ray
@@ -46,33 +45,16 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
             else:
                 ray_distances.append((None, relative_angle, None))
                 sensor_points.append (None)
-
-            
-            
     
     # filter valid rays
     valid = [(d, ang, p) for (d, ang, p) in ray_distances if d is not None]
     if not valid:
         return None
 
-    """
-    y_axis = np.array([0.0, 1.0])  # global Y axis
-
-    # normalize vector v
-    v_norm = v / np.linalg.norm(v)
-
-    # dot product gives cos(theta)
-    cos_theta = np.dot(v_norm, y_axis)
-
-    # clamp to valid domain to avoid floating-point error
-    cos_theta = np.clip(cos_theta, -1.0, 1.0)
-
-    angle = math.acos(cos_theta)
-
-    print("Angle between sensors and Y axis:", angle)
-    """
     # find ray with minimum raw distance
     raw_min_dist, ang, min_hit = min(valid, key=lambda v: v[0])
+    
+    side = 'left' if ang < 0 else 'right'
     
     # Primary match
     p1 = None
@@ -99,8 +81,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
             elif sensor_points[0] is not None and sensor_points[1] is not None:
                 p1 = sensor_points[0]
                 p2 = sensor_points[1]
-
-
+                
             break
 
     # final guard
@@ -119,7 +100,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
     if np.linalg.norm(v) < 1e-8:
         # degenerate — don't draw
-        return perpendicular_distance
+        return perpendicular_distance, theta, side
 
     # tangent angle relative to X-axis (standard math convention)
     tangent_angle = math.atan2(v[1], v[0])
@@ -133,13 +114,11 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     # If you want the normal to point to the car side (match your 'ang' sign),
     # flip it when necessary (ang < 0 means left-side sensor in your code).
     # You might need to invert the sign depending on your coordinate convention.
-    print (lane_normal)
-
+   
     lane_normal = -lane_normal
-
-    print(ang, lane_normal)
-    # make sure it's normalized (safety)
     lane_normal = lane_normal / np.linalg.norm(lane_normal)
+    
+    print(ang, lane_normal)
 
     # compute endpoint in world coordinates
     end_world = start + perpendicular_distance * lane_normal
@@ -149,13 +128,9 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     end_pos_screen = viewport.world_to_screen_scalar(tuple(end_world))
     pygame.draw.line(screen, (255, 0, 0), screen_start, end_pos_screen, 2)
 
+    return perpendicular_distance, tangent_angle, side
 
 
-
-    return perpendicular_distance
-
-
- 
 def handle_input(car):
     """
     Process keyboard input and return control commands.
@@ -186,6 +161,101 @@ def handle_input(car):
             omega_s = -STEER_RATE_RPS
     return V, omega_s
 
+def normalize_angle(angle):
+    """Wraps angle to [-pi, pi]."""
+    return np.arctan2(np.sin(angle), np.cos(angle))
+
+
+def align_road_angle(car_theta, road_angle):
+    """
+    Flips the road_angle 180 degrees if it points backwards relative to the car.
+    This fixes the issue where the Right Sensor vector points in reverse.
+    """
+    diff = normalize_angle(road_angle - car_theta)
+    # If the difference is huge (> 90 deg), the vector is pointing backwards.
+    if abs(diff) > (np.pi / 2):
+        return normalize_angle(road_angle + np.pi)
+    return road_angle
+
+
+def is_moving_towards_wall(car, road_angle, side):
+    """
+    Checks if the car heading is pointing towards the detected wall.
+    Uses aligned angles to ensure robust detection for both Left and Right sensors.
+    """
+    _, _, theta, _, _ = car.get_state()
+    
+    # 1. Fix the direction ambiguity (Crucial for Right Sensor)
+    forward_road_angle = align_road_angle(theta, road_angle)
+    
+    # 2. Calculate Heading Error (Road - Car)
+    # Positive Error: Car is pointing Left relative to road.
+    # Negative Error: Car is pointing Right relative to road.
+    heading_error = normalize_angle(forward_road_angle - theta)
+    
+    threshold = 0.01 # Sensitivity buffer
+    
+    if side == 'left':
+        # Wall is on Left. Danger if car points Left (Positive Error).
+        return heading_error > threshold
+        
+    elif side == 'right':
+        # Wall is on Right. Danger if car points Right (Negative Error).
+        return heading_error < -threshold
+        
+    return False
+
+def car_robot_control(car, dist, road_angle, side):
+    """
+    Task 5: LTA Controller implementation.
+    
+    Control Law (Lecture 4, Slide 15): omega = Ks * e_theta + Kl * e_y
+    
+    We combine:
+    1. Heading Error (e_theta): Align car with road tangent.
+    2. Lateral Error (e_y): "Push" the car away if it is too close to the wall.
+    """
+    # --- TUNING PARAMETERS ---
+    # Ks: Heading Gain. Controls how fast we align to the road.
+    Ks = 6.0  
+    
+    # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
+    # Higher = stronger push when close to the line.
+    Kl = 0.15 
+    
+    # --- 1. CALCULATE HEADING ERROR (e_theta) ---
+    _, _, theta, _, _ = car.get_state()
+    
+    # Align road angle to fix sensor direction ambiguity
+    forward_road_angle = align_road_angle(theta, road_angle)
+    e_theta = normalize_angle(forward_road_angle - theta)
+    
+    # --- 2. CALCULATE LATERAL ERROR (e_y / Repulsion) ---
+    # How deep are we in the danger zone?
+    # If dist is 0 (touching wall), push is Max. If dist is Threshold, push is 0.
+    push_magnitude = max(0, LTA_THRESHOLD - dist)
+    
+    # --- 3. COMBINE TERMS ---
+    # Base correction from heading
+    omega_s = Ks * e_theta
+    
+    # Add repulsion based on side
+    if side == 'left':
+        # Left Wall: We want to steer Right (+omega) to move away
+        omega_s += Kl * push_magnitude
+    elif side == 'right':
+        # Right Wall: We want to steer Left (-omega) to move away
+        omega_s -= Kl * push_magnitude
+        
+    # --- 4. OUTPUT ---
+    # Clamp to physical limits
+    omega_s = max(-STEER_RATE_RPS, min(omega_s, STEER_RATE_RPS))
+    
+    # Maintain speed
+    V = MAX_SPEED_PPS
+    
+    return V, omega_s
+
 
 def main():
     pygame.init()
@@ -211,13 +281,13 @@ def main():
     
     # --- 3. SETUP SENSORS ---
     left_sensor = ForwardSensor(
-        ray_angles=[-math.radians(40), -math.radians(20)],
+        ray_angles=[-math.radians(60), -math.radians(20)],
         ray_length=500
     )
     left_sensor.name = "left"
     
     right_sensor = ForwardSensor(
-        ray_angles=[math.radians(20), math.radians(40)],
+        ray_angles=[math.radians(20), math.radians(60)],
         ray_length=500
     )
     right_sensor.name = "right"
@@ -229,6 +299,7 @@ def main():
     # --- 5. MAIN LOOP ---
     running = True
     paused = False
+    
     while running:
         dt = clock.tick(FPS) / 1000.0
         
@@ -249,19 +320,48 @@ def main():
         if paused:
             continue
         
-        # Logic
-        v_cmd, s_cmd = handle_input(car)
-        car.update(v_cmd, s_cmd, dt)
-        viewport.update(car)
-        
         # Rendering
         renderer.render_environment(env)
         renderer.render_car(car)
-
-        # Draw sensors on top (convert world -> screen with viewport)
-        min_distance = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
-        plotter.update(min_distance)
+        
+        sensor_result = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
+        
+        # Logic
+        v_cmd, s_cmd = handle_input(car)
+        LTA_activate = False
+        
+        if sensor_result is not None:
+            lateral_dist, road_angle, side = sensor_result
+            
+            # A. Check Danger Zone
+            in_danger_zone = abs(lateral_dist) < LTA_THRESHOLD
+            
+            # B. Check Trajectory (Are we hitting the wall?)
+            moving_to_danger = is_moving_towards_wall(car, road_angle, side)
+            
+            # D. Final Decision
+            # Activate ONLY if danger exists AND user is NOT overriding
+            if in_danger_zone and moving_to_danger:
+                LTA_activate = True
+                v_cmd, s_cmd = car_robot_control(car, lateral_dist, road_angle, side)
+        
+        # Physics Update
+        car.update(v_cmd, s_cmd, dt)
+        viewport.update(car)
+        
+        # Visualization
+        plot_dist = sensor_result[0] if sensor_result else None
+        plotter.update(plot_dist)
         draw_hud(screen, car, clock)
+        
+        # TODO: Remove this at the end or move it to draw_hub function
+        # Visual Warning for LTA
+        if LTA_activate:
+            font = pygame.font.SysFont("Arial", 26, bold=True)
+            text_str = f"!!! LTA ACTIVE ({side.upper()}) !!!"
+            text_surface = font.render(text_str, True, (255, 50, 50))
+            rect = text_surface.get_rect(center=(SCREEN_WIDTH_PX // 2, 50))
+            screen.blit(text_surface, rect)
         
         pygame.display.flip()
         
