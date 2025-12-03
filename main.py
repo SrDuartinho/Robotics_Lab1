@@ -96,11 +96,13 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     _, _, theta, _, _ = car.get_state()
 
     perpendicular_distance = raw_min_dist * abs(math.cos((theta+road_angle) + ang))
+    
+    e_x = perpendicular_distance = raw_min_dist * abs(math.sin((theta+road_angle) + ang))
 
 
     if np.linalg.norm(v) < 1e-8:
         # degenerate — don't draw
-        return perpendicular_distance, theta, side
+        return perpendicular_distance, e_x, theta, side
 
     # tangent angle relative to X-axis (standard math convention)
     tangent_angle = math.atan2(v[1], v[0])
@@ -118,7 +120,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     lane_normal = -lane_normal
     lane_normal = lane_normal / np.linalg.norm(lane_normal)
     
-    print(ang, lane_normal)
+    #print(ang, lane_normal)
 
     # compute endpoint in world coordinates
     end_world = start + perpendicular_distance * lane_normal
@@ -128,7 +130,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
     end_pos_screen = viewport.world_to_screen_scalar(tuple(end_world))
     pygame.draw.line(screen, (255, 0, 0), screen_start, end_pos_screen, 2)
 
-    return perpendicular_distance, tangent_angle, side
+    return perpendicular_distance,e_x, tangent_angle, side
 
 
 def handle_input(car):
@@ -205,7 +207,7 @@ def is_moving_towards_wall(car, road_angle, side):
         
     return False
 
-def car_robot_control(car, dist, road_angle, side):
+def car_robot_control(car, dist, e_x, road_angle, side):
     """
     Task 5: LTA Controller implementation.
     
@@ -222,6 +224,10 @@ def car_robot_control(car, dist, road_angle, side):
     # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
     # Higher = stronger push when close to the line.
     Kl = 0.3
+    
+    Kv = 0.03      # <<< NEW SPEED GAIN
+    
+    V0 = MAX_SPEED_PPS * 0.95
     
     # --- 1. CALCULATE HEADING ERROR (e_theta) ---
     _, _, theta, _, _ = car.get_state()
@@ -251,8 +257,21 @@ def car_robot_control(car, dist, road_angle, side):
     # Clamp to physical limits
     omega_s = max(-STEER_RATE_RPS, min(omega_s, STEER_RATE_RPS))
     
+    # ------------------------------------------------------------
+    # --- 4. NEW SPEED CONTROL SECTION ---------------------------
+    # ------------------------------------------------------------
+    # Compute forward error e_x as projection onto road tangent
+
+    # Apply speed law
+    V = V0 + Kv * e_x
+
+    print (V, V0)
+    # Clamp to speed limits
+    V = max(0, min(V, MAX_SPEED_PPS))
+
+    
     # Maintain speed
-    V = MAX_SPEED_PPS
+    #V = MAX_SPEED_PPS
     
     return V, omega_s
 
@@ -331,7 +350,7 @@ def main():
         LTA_activate = False
         
         if sensor_result is not None:
-            lateral_dist, road_angle, side = sensor_result
+            lateral_dist, e_x, road_angle, side = sensor_result
             
             # A. Check Danger Zone
             in_danger_zone = abs(lateral_dist) < LTA_THRESHOLD
@@ -343,12 +362,13 @@ def main():
             # Activate ONLY if danger exists AND user is NOT overriding
             if in_danger_zone and moving_to_danger:
                 LTA_activate = True
-                v_cmd, s_cmd = car_robot_control(car, lateral_dist, road_angle, side)
+                v_cmd, s_cmd = car_robot_control(car, lateral_dist,e_x, road_angle, side)
         
         # Physics Update
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
         
+        print("car speed: ", v_cmd)
         # Visualization
         plot_dist = sensor_result[0] if sensor_result else None
         plotter.update(plot_dist)

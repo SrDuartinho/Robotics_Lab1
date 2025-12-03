@@ -85,4 +85,4 @@ COLORS = {
     'road_gray': (80, 80, 80),
 }
 
-LTA_THRESHOLD = 30.0
+LTA_THRESHOLD = 20.0
