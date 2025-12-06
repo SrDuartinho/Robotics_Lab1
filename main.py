@@ -1,6 +1,8 @@
 import pygame
 import math
 import numpy as np
+import csv
+from datetime import datetime
 from car import Car
 from sensors import ForwardSensor
 from viewport import Viewport
@@ -280,6 +282,14 @@ def main():
     clock = pygame.time.Clock()
     #plotter = LiveSensorPlot()
     
+    # --- CSV LOGGING SETUP ---
+    log_filename = f"lta_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    csv_file = open(log_filename, 'w', newline='')
+    csv_writer = csv.writer(csv_file)
+    # Write header
+    csv_writer.writerow(['time_s', 'lateral_dist_px', 'lateral_dist_m', 'in_lane', 'speed_pps', 'speed_mps', 'steering_rad', 'heading_rad', 'lta_active'])
+    csv_file.flush()
+    
     # --- 1. SETUP ENVIRONMENT ---
     env = CurvedEnvironment()
     
@@ -315,9 +325,17 @@ def main():
     # --- 5. MAIN LOOP ---
     running = True
     paused = False
+    frame_count = 0
+    test_start_time = None
     
     while running:
         dt = clock.tick(FPS) / 1000.0
+        
+        # Start timer on first frame
+        if test_start_time is None:
+            test_start_time = 0.0
+        else:
+            test_start_time += dt
         
         # Event Handling
         for event in pygame.event.get():
@@ -365,6 +383,32 @@ def main():
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
         
+        # --- LOG METRICS TO CSV ---
+        if sensor_result is not None:
+            lateral_dist, e_x, road_angle, side = sensor_result
+            # Check if car is within safe lane bounds (assume LANE_WIDTH_PX / 2 from center)
+            in_lane = abs(lateral_dist) > LTA_THRESHOLD
+        else:
+            lateral_dist = None
+            in_lane = None
+        
+        x, y, theta, phi, _ = car.get_state()
+        speed_pps = car.get_velocity()
+        
+        csv_writer.writerow([
+            test_start_time,
+            lateral_dist,
+            lateral_dist / PPM if lateral_dist is not None else None,
+            in_lane,
+            speed_pps,
+            speed_pps / PPM,
+            phi,
+            theta,
+            LTA_activate
+        ])
+        csv_file.flush()
+        frame_count += 1
+        
         #print("car speed: ", v_cmd)
         #print(e_x)
         
@@ -385,6 +429,8 @@ def main():
         pygame.display.flip()
         
     pygame.quit()
+    csv_file.close()
+    print(f"\nTest complete. Logged {frame_count} frames to: {log_filename}")
     sys.exit()
 
 
