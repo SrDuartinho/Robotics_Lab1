@@ -97,7 +97,7 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
     perpendicular_distance = raw_min_dist * abs(math.cos((theta+road_angle) + ang))
     
-    e_x = perpendicular_distance = raw_min_dist * abs(math.sin((theta+road_angle) + ang))
+    e_x = raw_min_dist * abs(math.sin((theta+road_angle) + ang))
 
 
     if np.linalg.norm(v) < 1e-8:
@@ -225,9 +225,12 @@ def car_robot_control(car, dist, e_x, road_angle, side):
     # Higher = stronger push when close to the line.
     Kl = 0.3
     
-    Kv = 0.03      # <<< NEW SPEED GAIN
+    Kv = 0.05                       # slowdown gain per pixel of risk
     
-    V0 = MAX_SPEED_PPS * 0.95
+    # Speed tuning
+    V_base = MAX_SPEED_PPS * 0.95  # cruise speed when LTA active
+    V_min = MAX_SPEED_PPS * 0.3    # floor speed under high risk
+    
     
     # --- 1. CALCULATE HEADING ERROR (e_theta) ---
     _, _, theta, _, _ = car.get_state()
@@ -258,21 +261,15 @@ def car_robot_control(car, dist, e_x, road_angle, side):
     omega_s = max(-STEER_RATE_RPS, min(omega_s, STEER_RATE_RPS))
     
     # ------------------------------------------------------------
-    # --- 4. NEW SPEED CONTROL SECTION ---------------------------
+    # --- 4. RESPONSIVE SPEED CONTROL UNDER LTA ------------------
     # ------------------------------------------------------------
-    # Compute forward error e_x as projection onto road tangent
+    # Risk grows as we get closer to the wall; slow down accordingly.
+    risk = max(0.0, LTA_THRESHOLD - dist)
+    V = V_base - Kv * risk * e_x
 
-    # Apply speed law
-    V = V0 + Kv * e_x
-
-    print (V, V0)
-    # Clamp to speed limits
-    V = max(0, min(V, MAX_SPEED_PPS))
-
-    
-    # Maintain speed
-    #V = MAX_SPEED_PPS
-    
+    # Clamp to avoid stopping completely and to keep within limits
+    V = max(V_min, min(V, MAX_SPEED_PPS))
+    print(V)
     return V, omega_s
 
 
@@ -281,7 +278,7 @@ def main():
     screen = pygame.display.set_mode((SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX))
     pygame.display.set_caption(WINDOW_TITLE)
     clock = pygame.time.Clock()
-    plotter = LiveSensorPlot()
+    #plotter = LiveSensorPlot()
     
     # --- 1. SETUP ENVIRONMENT ---
     env = CurvedEnvironment()
@@ -352,26 +349,28 @@ def main():
         if sensor_result is not None:
             lateral_dist, e_x, road_angle, side = sensor_result
             
-            # A. Check Danger Zone
-            in_danger_zone = abs(lateral_dist) < LTA_THRESHOLD
+            # A. Check Danger Zone (engage as soon as we hit threshold)
+            in_danger_zone = abs(lateral_dist) <= LTA_THRESHOLD
             
-            # B. Check Trajectory (Are we hitting the wall?)
+            # B. (Optional) heading check; keep for logging/future tuning
             moving_to_danger = is_moving_towards_wall(car, road_angle, side)
             
             # D. Final Decision
-            # Activate ONLY if danger exists AND user is NOT overriding
+            # Engage LTA immediately upon entering the zone, regardless of heading
             if in_danger_zone and moving_to_danger:
                 LTA_activate = True
-                v_cmd, s_cmd = car_robot_control(car, lateral_dist,e_x, road_angle, side)
+                v_cmd, s_cmd = car_robot_control(car, lateral_dist, e_x, road_angle, side)
         
         # Physics Update
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
         
-        print("car speed: ", v_cmd)
+        #print("car speed: ", v_cmd)
+        #print(e_x)
+        
         # Visualization
         plot_dist = sensor_result[0] if sensor_result else None
-        plotter.update(plot_dist)
+        #plotter.update(plot_dist)
         draw_hud(screen, car, clock)
         
         # TODO: Remove this at the end or move it to draw_hub function
