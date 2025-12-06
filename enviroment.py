@@ -143,8 +143,8 @@ class CurvedEnvironment(Environment):
         # 1. Configuration
         self.width = ROAD_WIDTH_PX
         self.straight_len = STRAIGHT_ROAD_LENGTH_PX / 5
-        self.turn_radius = 4000
-        self.turn_angle_deg = 35
+        self.turn_radius = 500
+        self.turn_angle_deg = 45
         self.exit_len = STRAIGHT_ROAD_LENGTH_PX / 5
         self.resolution = 100
 

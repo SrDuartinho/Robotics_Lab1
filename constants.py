@@ -23,7 +23,7 @@ WHITE_LINE_WIDTH_M = 0.15
 MAX_SPEED_MPS = 5.0
 REVERSE_SPEED_FACTOR = 0.5              # Reverse is half max speed
 MAX_STEER_ANGLE_DEG = 35.0
-STEER_RATE_DPS = 30.0                   # Degrees per second
+STEER_RATE_DPS = 50.0                   # Degrees per second
 
 # Sensors
 SENSOR_RANGE_FRONT_M = 10.0
@@ -85,4 +85,4 @@ COLORS = {
     'road_gray': (80, 80, 80),
 }
 
-LTA_THRESHOLD = 20.0
+LTA_THRESHOLD = 40.0
