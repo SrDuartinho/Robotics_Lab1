@@ -366,7 +366,7 @@ def main():
         
         if sensor_result is not None:
             lateral_dist, e_x, road_angle, side = sensor_result
-            
+
             # A. Check Danger Zone (engage as soon as we hit threshold)
             in_danger_zone = abs(lateral_dist) <= LTA_THRESHOLD
             
@@ -387,7 +387,7 @@ def main():
         if sensor_result is not None:
             lateral_dist, e_x, road_angle, side = sensor_result
             # Check if car is within safe lane bounds (assume LANE_WIDTH_PX / 2 from center)
-            in_lane = abs(lateral_dist) > LTA_THRESHOLD
+            in_lane = abs(lateral_dist) > (CAR_WIDTH_PX/2)
         else:
             lateral_dist = None
             in_lane = None

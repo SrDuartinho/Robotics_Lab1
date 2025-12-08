@@ -7,7 +7,7 @@ Computes lane-keeping metrics from CSV logs:
 - Average lateral error during departures
 - Speed and steering statistics per condition
 """
-
+from constants import * 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -41,9 +41,9 @@ def compute_lane_keeping_metrics(df, lane_threshold_px=40.0):
         return {}
     
     # Determine in-lane frames (distance > threshold means safe)
-    in_lane = valid['lateral_dist_px'] > lane_threshold_px
+    in_lane = valid['lateral_dist_px'] > (CAR_WIDTH_PX/2)
     
-    # Metrics
+    # Metricss
     pct_in_lane = (in_lane.sum() / len(in_lane)) * 100.0
     
     # Departures: transitions from in-lane to out-of-lane
@@ -120,7 +120,8 @@ def plot_metrics(df, test_name="LTA Test"):
     # Lateral distance
     valid = df[df['lateral_dist_m'].notna()]
     axes[0].plot(valid['time_s'], valid['lateral_dist_m'], 'b-', linewidth=1.5, label='Lateral Distance (m)')
-    axes[0].axhline(y=40/25, color='r', linestyle='--', alpha=0.7, label='LTA Threshold')
+    axes[0].axhline(y=40/PPM, color='r', linestyle='--', alpha=0.7, label='LTA Threshold')
+    axes[0].axhline(y=(CAR_WIDTH_PX/2)/PPM, color='orange', linestyle='-.', alpha=0.8, label='Lane Crossing (car half-width)')
     axes[0].set_ylabel('Distance (m)')
     axes[0].set_title('Lateral Distance from Lane')
     axes[0].legend()
