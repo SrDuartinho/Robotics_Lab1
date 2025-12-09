@@ -121,7 +121,7 @@ def plot_metrics(df, test_name="LTA Test"):
     valid = df[df['lateral_dist_m'].notna()]
     axes[0].plot(valid['time_s'], valid['lateral_dist_m'], 'b-', linewidth=1.5, label='Lateral Distance (m)')
     axes[0].axhline(y=40/PPM, color='r', linestyle='--', alpha=0.7, label='LTA Threshold')
-    axes[0].axhline(y=(CAR_WIDTH_PX/2)/PPM, color='orange', linestyle='-.', alpha=0.8, label='Lane Crossing (car half-width)')
+    axes[0].axhline(y=(CAR_WIDTH_M/2), color='orange', linestyle='-.', alpha=0.8, label='Lane Crossing (car half-width)')
     axes[0].set_ylabel('Distance (m)')
     axes[0].set_title('Lateral Distance from Lane')
     axes[0].legend()
