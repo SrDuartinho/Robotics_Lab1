@@ -137,33 +137,63 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
 def handle_input(car):
     """
-    Process keyboard input and return control commands.
-    
-    Returns:
-        V: Linear velocity (pixels/sec)
-        omega_s: Steering rate (radians/sec)
+    Manual Control with:
+    1. Sport-Tuned Steering (Responsive at high speed)
+    2. Inertia-Based Acceleration (Prevents jerk when LTA hands back control)
+    3. Driver Intent Detection (For overtaking)
     """
     keys = pygame.key.get_pressed()
+    current_v = car.get_velocity()
     
-    # Compute velocity command
-    V = MAX_SPEED_PPS
-    # if keys[pygame.K_UP] or keys[pygame.K_w]:
-    #     V = MAX_SPEED_PPS
-    # elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
-    #     V = -MAX_SPEED_PPS * REVERSE_SPEED_FACTOR
+    # --- 1. VELOCITY CONTROL (With Inertia) ---
+    target_v = MAX_SPEED_PPS
     
-    # Compute steering rate command
+    # Check Manual Inputs
+    # if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+    #     target_v = -MAX_SPEED_PPS * 0.5
+    # elif keys[pygame.K_UP] or keys[pygame.K_w]:
+    #     target_v = MAX_SPEED_PPS
+    # Note: Default is Max Speed (Cruising), simulating a heavy throttle foot.
+
+    # SMOOTHING LOGIC:
+    # If accelerating: 2% change per frame (Simulates Engine Lag/Weight)
+    # If braking:      8% change per frame (Brakes are stronger)
+    accel_smoothing = 0.02
+    if target_v < current_v:
+        accel_smoothing = 0.08
+        
+    V = current_v + (target_v - current_v) * accel_smoothing
+
+    # --- 2. STEERING CONTROL (Sport Tuned) ---
+    
+    # A. Sensitivity Curve
+    # Divisor 150.0: Gentle drop-off.
+    # Floor 0.35: Always keep 35% steering power even at Max Speed.
+    raw_dampening = 1.0 / (1.0 + (abs(current_v) / 150.0))
+    steer_dampening = max(0.35, raw_dampening)
+    
+    active_turn_rate = STEER_RATE_RPS * steer_dampening
+    
+    # B. Input Processing
     omega_s = 0.0
+    DECAY_GAIN = 5.0 
+    driver_is_steering = False # FLAG: Tell Main Loop if we are active
+
     if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-        omega_s = -STEER_RATE_RPS  # Turn left (increase phi)
+        omega_s = -active_turn_rate
+        driver_is_steering = True
+        
     elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-        omega_s = STEER_RATE_RPS  # Turn right (decrease phi)
+        omega_s = active_turn_rate
+        driver_is_steering = True
+        
     else:
-        if car.phi < 0.0:
-            omega_s = STEER_RATE_RPS
-        if car.phi > 0.0:
-            omega_s = -STEER_RATE_RPS
-    return V, omega_s
+        # C. Passive Decay (Snap to Center)
+        # We use the full physical rate (not dampened) to stabilize fast.
+        natural_return_rate = -car.phi * DECAY_GAIN
+        omega_s = max(-STEER_RATE_RPS, min(natural_return_rate, STEER_RATE_RPS))
+
+    return V, omega_s, driver_is_steering
 
 def normalize_angle(angle):
     """Wraps angle to [-pi, pi]."""
@@ -211,67 +241,68 @@ def is_moving_towards_wall(car, road_angle, side):
 
 def car_robot_control(car, dist, e_x, road_angle, side):
     """
-    Task 5: LTA Controller implementation.
-    
-    Control Law (Lecture 4, Slide 15): omega = Ks * e_theta + Kl * e_y
-    
-    We combine:
-    1. Heading Error (e_theta): Align car with road tangent.
-    2. Lateral Error (e_y): "Push" the car away if it is too close to the wall.
+    LTA Controller with:
+    1. Quadratic Repulsion (No entry kick)
+    2. Steering-Brake Coupling (Slows down for curves automatically)
+    3. Heading Alignment (High Gain)
     """
-    # --- TUNING PARAMETERS ---
-    # Ks: Heading Gain. Controls how fast we align to the road.
-    Ks = 100 
+    # --- TUNING ---
+    Ks = 500       # Heading Gain (Strong alignment priority)
     
-    # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
-    # Higher = stronger push when close to the line.
-    Kl = 0.3
+    # "Soft Spring" Strength:
+    # This is the Max Repulsion (Radians/Sec) if you hit the wall.
+    # 0.8 rad/s is a strong emergency save.
+    Kl_max_push = 0.8 
     
-    Kv = 0.05                       # slowdown gain per pixel of risk
+    # Speed Limits
+    V_max = MAX_SPEED_PPS * 0.95   # Cruising
+    V_min = MAX_SPEED_PPS * 0.25   # Tight Cornering
     
-    # Speed tuning
-    V_base = MAX_SPEED_PPS * 0.95  # cruise speed when LTA active
-    V_min = MAX_SPEED_PPS * 0.3    # floor speed under high risk
-    
-    
-    # --- 1. CALCULATE HEADING ERROR (e_theta) ---
+    # --- 1. HEADING ERROR ---
     _, _, theta, _, _ = car.get_state()
-    
-    # Align road angle to fix sensor direction ambiguity
     forward_road_angle = align_road_angle(theta, road_angle)
     e_theta = normalize_angle(forward_road_angle - theta)
     
-    # --- 2. CALCULATE LATERAL ERROR (e_y / Repulsion) ---
-    # How deep are we in the danger zone?
-    # If dist is 0 (touching wall), push is Max. If dist is Threshold, push is 0.
-    push_magnitude = max(0, LTA_THRESHOLD - dist)
+    # --- 2. SOFT REPULSION (Quadratic) ---
+    # 0.0 at Threshold, 1.0 at Wall
+    penetration_ratio = max(0.0, (LTA_THRESHOLD - dist) / LTA_THRESHOLD)
     
-    # --- 3. COMBINE TERMS ---
-    # Base correction from heading
+    # Force = Ratio^2. This makes the boundary feel "soft" at first, then hard.
+    repulsion_force = Kl_max_push * (penetration_ratio ** 2)
+    
+    # --- 3. COMBINE STEERING ---
     omega_s = Ks * e_theta
     
-    # Add repulsion based on side
     if side == 'left':
-        # Left Wall: We want to steer Right (+omega) to move away
-        omega_s += Kl * push_magnitude
+        omega_s += repulsion_force
     elif side == 'right':
-        # Right Wall: We want to steer Left (-omega) to move away
-        omega_s -= Kl * push_magnitude
+        omega_s -= repulsion_force
         
-    # --- 4. OUTPUT ---
     # Clamp to physical limits
     omega_s = max(-STEER_RATE_RPS, min(omega_s, STEER_RATE_RPS))
     
-    # ------------------------------------------------------------
-    # --- 4. RESPONSIVE SPEED CONTROL UNDER LTA ------------------
-    # ------------------------------------------------------------
-    # Risk grows as we get closer to the wall; slow down accordingly.
-    risk = max(0.0, LTA_THRESHOLD - dist)
-    V = V_base - Kv * risk * e_x
-
-    # Clamp to avoid stopping completely and to keep within limits
+    # --- 4. VELOCITY CONTROL (Steering-Coupled) ---
+    
+    # A. How hard are we turning? (0.0 to 1.0)
+    steering_effort = abs(omega_s) / STEER_RATE_RPS
+    
+    # B. Brake Curve (Quadratic)
+    # Small corrections (effort < 0.3) cause almost no braking.
+    # Hard corrections (effort > 0.8) cause massive braking.
+    brake_factor = pow(steering_effort, 2)
+    
+    # C. Calculate Target
+    target_v = V_max - (V_max - V_min) * brake_factor
+    
+    # D. Smoothing (Inertia)
+    # Blend 10% new target with 90% current speed to prevent jitter.
+    current_v = car.get_velocity()
+    SMOOTHING = 0.1 
+    V = (target_v * SMOOTHING) + (current_v * (1.0 - SMOOTHING))
+    
+    # Safety Floor
     V = max(V_min, min(V, MAX_SPEED_PPS))
-    print(V)
+
     return V, omega_s
 
 
@@ -361,22 +392,43 @@ def main():
         sensor_result = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
         
         # Logic
-        v_cmd, s_cmd = handle_input(car)
+        v_cmd, s_cmd, driver_is_steering = handle_input(car)
         LTA_activate = False
         
         if sensor_result is not None:
             lateral_dist, e_x, road_angle, side = sensor_result
 
-            # A. Check Danger Zone (engage as soon as we hit threshold)
+            # --- 1. CALCULATE STATES ---
+            # Strict Danger Zone
             in_danger_zone = abs(lateral_dist) <= LTA_THRESHOLD
             
-            # B. (Optional) heading check; keep for logging/future tuning
-            moving_to_danger = is_moving_towards_wall(car, road_angle, side)
+            # Relaxed Buffer Zone (Keep LTA on a bit longer to finish aligning)
+            in_buffer_zone = abs(lateral_dist) <= (LTA_THRESHOLD + 20)
             
-            # D. Final Decision
-            # Engage LTA immediately upon entering the zone, regardless of heading
-            if in_danger_zone and moving_to_danger:
-                LTA_activate = True
+            # Check Heading
+            _, _, theta, _, _ = car.get_state()
+            forward_road_angle = align_road_angle(theta, road_angle)
+            heading_error = normalize_angle(forward_road_angle - theta)
+            
+            # Is car aligned? (Threshold ~3 degrees)
+            is_bad_heading = abs(heading_error) > 0.05
+
+            # --- 2. ACTIVATION LOGIC ---
+            
+            # OVERRIDE: If driver is steering, LTA stays OFF (allows overtaking)
+            if not driver_is_steering:
+                
+                # CASE A: Entry - Trigger LTA immediately
+                if in_danger_zone:
+                    LTA_activate = True
+                    
+                # CASE B: Exit Hysteresis - Keep LTA on until aligned
+                # If we are in the buffer (just outside danger) AND still pointing wrong, stay active.
+                elif in_buffer_zone and is_bad_heading:
+                     LTA_activate = True
+
+            # --- 3. EXECUTE LTA ---
+            if LTA_activate:
                 v_cmd, s_cmd = car_robot_control(car, lateral_dist, e_x, road_angle, side)
         
         # Physics Update
