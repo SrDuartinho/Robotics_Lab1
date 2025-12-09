@@ -221,13 +221,13 @@ def car_robot_control(car, dist, e_x, road_angle, side):
     """
     # --- TUNING PARAMETERS ---
     # Ks: Heading Gain. Controls how fast we align to the road.
-    Ks = 100 
+    Ks = 10 
     
     # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
     # Higher = stronger push when close to the line.
-    Kl = 0.3
+    Kl = 0.1
     
-    Kv = 0.05                       # slowdown gain per pixel of risk
+    Kv = 0.01                       # slowdown gain per pixel of risk
     
     # Speed tuning
     V_base = MAX_SPEED_PPS * 0.95  # cruise speed when LTA active
@@ -271,7 +271,7 @@ def car_robot_control(car, dist, e_x, road_angle, side):
 
     # Clamp to avoid stopping completely and to keep within limits
     V = max(V_min, min(V, MAX_SPEED_PPS))
-    print(V)
+    print(e_theta)
     return V, omega_s
 
 
