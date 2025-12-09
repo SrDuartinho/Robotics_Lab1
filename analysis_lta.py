@@ -40,38 +40,87 @@ def compute_lane_keeping_metrics(df, lane_threshold_px=40.0):
         print("No valid lateral distance data.")
         return {}
     
-    # Determine in-lane frames (distance > threshold means safe)
-    in_lane = valid['lateral_dist_px'] > (CAR_WIDTH_PX/2)
+    # Evaluate effectiveness only when LTA is active
+    active = valid[valid['lta_active'].astype(bool)]
+    if len(active) == 0:
+        print("No frames with LTA active; skipping effectiveness calculation.")
+        return {
+            'total_frames': len(valid),
+            'duration_s': 0.0,
+            'pct_in_lane': np.nan,
+            'num_active_segments': 0,
+            'successful_segments': 0,
+            'num_departures': 0,
+            'avg_lateral_error_px': np.nan,
+            'max_lateral_error_px': np.nan,
+            'rms_lateral_error_px': np.nan,
+            'avg_lateral_error_m': np.nan,
+            'max_lateral_error_m': np.nan,
+            'rms_lateral_error_m': np.nan,
+            'avg_steering_rad': np.nan,
+            'max_steering_rad': np.nan,
+            'avg_speed_pps': np.nan,
+            'avg_speed_mps': np.nan,
+            'lta_active_pct': 0.0,
+        }
     
-    # Metricss
-    pct_in_lane = (in_lane.sum() / len(in_lane)) * 100.0
+    # Segment-level success: for each contiguous LTA-active segment, effectiveness is 100% if
+    # the car never touches the line (lateral_dist_px stays > CAR_WIDTH_PX/2); otherwise 0%.
+    active_mask = valid['lta_active'].astype(bool)
+    segments = []
+    in_segment = False
+    start_idx = None
+    prev_idx = None
+    for idx, flag in active_mask.items():
+        if flag and not in_segment:
+            start_idx = idx
+            in_segment = True
+        if not flag and in_segment:
+            segments.append((start_idx, prev_idx))
+            in_segment = False
+        prev_idx = idx
+    if in_segment:
+        segments.append((start_idx, prev_idx))
+
+    segment_effectiveness = []
+    for start, end in segments:
+        seg = valid.loc[start:end]
+        touched_line = (seg['lateral_dist_px'] <= (CAR_WIDTH_PX/2)).any()
+        segment_effectiveness.append(0.0 if touched_line else 100.0)
+
+    num_segments = len(segment_effectiveness)
+    successful_segments = sum(1 for v in segment_effectiveness if v == 100.0)
+    pct_in_lane = np.mean(segment_effectiveness) if segment_effectiveness else np.nan
     
-    # Departures: transitions from in-lane to out-of-lane
-    lane_changes = in_lane.astype(int).diff().fillna(0)
+    # Departures during active periods (frame-level) for reference
+    in_lane_active = active['lateral_dist_px'] > (CAR_WIDTH_PX/2)
+    lane_changes = in_lane_active.astype(int).diff().fillna(0)
     departures = (lane_changes == -1).sum()
     
     # Average lateral error (distance from lane boundary)
-    avg_lateral_error_px = valid['lateral_dist_px'].mean()
-    max_lateral_error_px = valid['lateral_dist_px'].max()
-    rms_lateral_error_px = np.sqrt((valid['lateral_dist_px'] ** 2).mean())
+    avg_lateral_error_px = active['lateral_dist_px'].mean()
+    max_lateral_error_px = active['lateral_dist_px'].max()
+    rms_lateral_error_px = np.sqrt((active['lateral_dist_px'] ** 2).mean())
     
-    avg_lateral_error_m = valid['lateral_dist_m'].mean()
-    max_lateral_error_m = valid['lateral_dist_m'].max()
-    rms_lateral_error_m = np.sqrt((valid['lateral_dist_m'] ** 2).mean())
+    avg_lateral_error_m = active['lateral_dist_m'].mean()
+    max_lateral_error_m = active['lateral_dist_m'].max()
+    rms_lateral_error_m = np.sqrt((active['lateral_dist_m'] ** 2).mean())
     
     # Steering and speed stats
-    avg_steering_rad = valid['steering_rad'].mean()
-    max_steering_rad = valid['steering_rad'].abs().max()
-    avg_speed_pps = valid['speed_pps'].mean()
-    avg_speed_mps = valid['speed_mps'].mean()
+    avg_steering_rad = active['steering_rad'].mean()
+    max_steering_rad = active['steering_rad'].abs().max()
+    avg_speed_pps = active['speed_pps'].mean()
+    avg_speed_mps = active['speed_mps'].mean()
     
-    # LTA activation percentage
+    # LTA activation percentage over all valid frames
     lta_pct = (valid['lta_active'].sum() / len(valid)) * 100.0
     
     return {
-        'total_frames': len(valid),
-        'duration_s': valid['time_s'].max() - valid['time_s'].min(),
+        'total_frames': len(active),
+        'duration_s': active['time_s'].max() - active['time_s'].min(),
         'pct_in_lane': pct_in_lane,
+        'num_active_segments': num_segments,
+        'successful_segments': successful_segments,
         'num_departures': departures,
         'avg_lateral_error_px': avg_lateral_error_px,
         'max_lateral_error_px': max_lateral_error_px,
@@ -93,9 +142,10 @@ def print_metrics(metrics, test_name="Test"):
     print(f"  {test_name}")
     print(f"{'='*60}")
     print(f"Duration: {metrics['duration_s']:.1f} s  ({metrics['total_frames']} frames)")
-    print(f"\nLANE-KEEPING EFFECTIVENESS:")
-    print(f"  % Time In Lane:     {metrics['pct_in_lane']:.1f}%")
-    print(f"  Number of Departures: {metrics['num_departures']}")
+    print(f"\nLANE-KEEPING EFFECTIVENESS (LTA segments):")
+    print(f"  Segment Success Rate: {metrics['pct_in_lane']:.1f}%")
+    print(f"  Successful Segments:  {metrics.get('successful_segments', 0)} / {metrics.get('num_active_segments', 0)}")
+    print(f"  Departures (frames):  {metrics['num_departures']}")
     print(f"\nLATERAL ERROR:")
     print(f"  Average (m):        {metrics['avg_lateral_error_m']:.3f} m")
     print(f"  RMS (m):            {metrics['rms_lateral_error_m']:.3f} m")
