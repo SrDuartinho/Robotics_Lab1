@@ -144,9 +144,28 @@ def handle_input(car):
         omega_s: Steering rate (radians/sec)
     """
     keys = pygame.key.get_pressed()
+    current_v = car.get_velocity()
+    
+    # --- 1. VELOCITY CONTROL (With Inertia) ---
+    target_v = MAX_SPEED_PPS
+    
+    # Check Manual Inputs
+    # if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+    #     target_v = -MAX_SPEED_PPS * 0.5
+    # elif keys[pygame.K_UP] or keys[pygame.K_w]:
+    #     target_v = MAX_SPEED_PPS
+    # Note: Default is Max Speed (Cruising), simulating a heavy throttle foot.
+
+    # SMOOTHING LOGIC:
+    # If accelerating: 2% change per frame (Simulates Engine Lag/Weight)
+    # If braking:      8% change per frame (Brakes are stronger)
+    accel_smoothing = 0.02
+    if target_v < current_v:
+        accel_smoothing = 0.08
+        
+    V = current_v + (target_v - current_v) * accel_smoothing
     
     # Compute velocity command
-    V = MAX_SPEED_PPS
     # if keys[pygame.K_UP] or keys[pygame.K_w]:
     #     V = MAX_SPEED_PPS
     # elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
@@ -221,13 +240,13 @@ def car_robot_control(car, dist, e_x, road_angle, side):
     """
     # --- TUNING PARAMETERS ---
     # Ks: Heading Gain. Controls how fast we align to the road.
-    Ks = 10 
+    Ks = 100 
     
     # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
     # Higher = stronger push when close to the line.
     Kl = 0.1
     
-    Kv = 0.01                       # slowdown gain per pixel of risk
+    Kv = 0.5                       # slowdown gain per pixel of risk
     
     # Speed tuning
     V_base = MAX_SPEED_PPS * 0.95  # cruise speed when LTA active
@@ -271,7 +290,7 @@ def car_robot_control(car, dist, e_x, road_angle, side):
 
     # Clamp to avoid stopping completely and to keep within limits
     V = max(V_min, min(V, MAX_SPEED_PPS))
-    print(e_theta)
+
     return V, omega_s
 
 
