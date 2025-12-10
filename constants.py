@@ -20,7 +20,7 @@ LANE_WIDTH_M = 6
 WHITE_LINE_WIDTH_M = 0.15
 
 # Motion Limits
-MAX_SPEED_MPS = 5.0
+MAX_SPEED_MPS = 15.0
 REVERSE_SPEED_FACTOR = 0.5              # Reverse is half max speed
 MAX_STEER_ANGLE_DEG = 35.0
 STEER_RATE_DPS = 50.0                   # Degrees per second
@@ -85,4 +85,4 @@ COLORS = {
     'road_gray': (80, 80, 80),
 }
 
-LTA_THRESHOLD = 40.0
+LTA_THRESHOLD = 50.0

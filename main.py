@@ -1,6 +1,8 @@
 import pygame
 import math
 import numpy as np
+import csv
+from datetime import datetime
 from car import Car
 from sensors import ForwardSensor
 from viewport import Viewport
@@ -142,9 +144,28 @@ def handle_input(car):
         omega_s: Steering rate (radians/sec)
     """
     keys = pygame.key.get_pressed()
+    current_v = car.get_velocity()
+    
+    # --- 1. VELOCITY CONTROL (With Inertia) ---
+    target_v = MAX_SPEED_PPS
+    
+    # Check Manual Inputs
+    # if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+    #     target_v = -MAX_SPEED_PPS * 0.5
+    # elif keys[pygame.K_UP] or keys[pygame.K_w]:
+    #     target_v = MAX_SPEED_PPS
+    # Note: Default is Max Speed (Cruising), simulating a heavy throttle foot.
+
+    # SMOOTHING LOGIC:
+    # If accelerating: 2% change per frame (Simulates Engine Lag/Weight)
+    # If braking:      8% change per frame (Brakes are stronger)
+    accel_smoothing = 0.02
+    if target_v < current_v:
+        accel_smoothing = 0.08
+        
+    V = current_v + (target_v - current_v) * accel_smoothing
     
     # Compute velocity command
-    V = MAX_SPEED_PPS
     # if keys[pygame.K_UP] or keys[pygame.K_w]:
     #     V = MAX_SPEED_PPS
     # elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
@@ -211,66 +232,84 @@ def car_robot_control(car, dist, e_x, road_angle, side):
     """
     Task 5: LTA Controller implementation.
     
-    Control Law (Lecture 4, Slide 15): omega = Ks * e_theta + Kl * e_y
+    Formula (Lecture 4, Slide 17): 
+    delta = -K1 * v * l + K2 * |v| * (psi_ref - psi)
     
     We combine:
     1. Heading Error (e_theta): Align car with road tangent.
     2. Lateral Error (e_y): "Push" the car away if it is too close to the wall.
     """
-    # --- TUNING PARAMETERS ---
-    # Ks: Heading Gain. Controls how fast we align to the road.
-    Ks = 100 
+    # --- GET CURRENT STATE ---
+    v_current = car.get_velocity()
+    _, _, theta, current_steering_phi, _ = car.get_state()
     
-    # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
-    # Higher = stronger push when close to the line.
-    Kl = 0.3
-    
-    Kv = 0.05                       # slowdown gain per pixel of risk
-    
-    # Speed tuning
-    V_base = MAX_SPEED_PPS * 0.95  # cruise speed when LTA active
-    V_min = MAX_SPEED_PPS * 0.3    # floor speed under high risk
-    
-    
-    # --- 1. CALCULATE HEADING ERROR (e_theta) ---
-    _, _, theta, _, _ = car.get_state()
-    
+    # --- CALCULATE HEADING ERROR (psi_ref - psi) ---
+    # We define e_theta = road_angle - car_theta
     # Align road angle to fix sensor direction ambiguity
     forward_road_angle = align_road_angle(theta, road_angle)
     e_theta = normalize_angle(forward_road_angle - theta)
     
-    # --- 2. CALCULATE LATERAL ERROR (e_y / Repulsion) ---
+    # --- CALCULATE LATERAL ERROR (e_y / Repulsion) ---
     # How deep are we in the danger zone?
-    # If dist is 0 (touching wall), push is Max. If dist is Threshold, push is 0.
-    push_magnitude = max(0, LTA_THRESHOLD - dist)
+    # If dist is 0 (touching wall), penetration is Max. 
+    # If dist is Threshold, penetration is 0.
+    penetration = max(0, LTA_THRESHOLD - dist)
     
-    # --- 3. COMBINE TERMS ---
-    # Base correction from heading
-    omega_s = Ks * e_theta
-    
-    # Add repulsion based on side
+    # Sign Convention:
+    # If hitting LEFT wall, we need a POSITIVE steering response (Turn Right).
+    # The formula is -K1*v*l. If v>0, we need l to be NEGATIVE to get a positive result.
     if side == 'left':
-        # Left Wall: We want to steer Right (+omega) to move away
-        omega_s += Kl * push_magnitude
-    elif side == 'right':
-        # Right Wall: We want to steer Left (-omega) to move away
-        omega_s -= Kl * push_magnitude
+        l = -penetration 
+    else: # right
+        l = penetration
         
-    # --- 4. OUTPUT ---
+    # --- APPLY NON-LINEAR CONTROL LAW (Finding Delta) ---
+    # Formula: delta = -K1 * v * l + K2 * |v| * e_theta
+    # Note: Gains are small because v is in pixels/sec (~100-300)
+    
+    # Tuning parameters
+    v_ref_pps = 15.0 * PPM      # reference speed in pixels
+    K1_ref = 0.000015  # Ideal Repulsion at v_ref
+    K2_ref = 0.005     # Ideal Alignment at v_ref
+    
+    ratio = MAX_SPEED_PPS / v_ref_pps
+    
+    # Lateral Repulsion Gain
+    # Scales with Inverse Square (1/raitio^2)
+    K1 = K1_ref * (1.0 / (ratio ** 2))
+    
+    # Heading Alignment Gain
+    # This should be the dominant force to keep the car parallel.
+    # Scales linear
+    K2 = K2_ref * ratio
+    
+    # This gives us the IDEAL steering angle (delta)
+    target_delta = (-K1 * v_current * l) + (K2 * abs(v_current) * e_theta)  
+    
+    # Clamp target to physical limits of the car (e.g. +/- 30 degrees)
+    MAX_STEER = MAX_STEER_ANGLE_RAD
+    target_delta = max(-MAX_STEER, min(target_delta, MAX_STEER))  
+    
+    steering_diff = target_delta - current_steering_phi
+    Kp_steering = 10.0  # How aggressively we turn the wheel to match the target
+    
+    omega_s = Kp_steering * steering_diff
+    
     # Clamp to physical limits
     omega_s = max(-STEER_RATE_RPS, min(omega_s, STEER_RATE_RPS))
+        
+    # --- SAFETY SPEED CONTROL ---
+    # Slow down if penetration is deep or steering is hard
+    V_base = MAX_SPEED_PPS
     
-    # ------------------------------------------------------------
-    # --- 4. RESPONSIVE SPEED CONTROL UNDER LTA ------------------
-    # ------------------------------------------------------------
-    # Risk grows as we get closer to the wall; slow down accordingly.
-    risk = max(0.0, LTA_THRESHOLD - dist)
-    V = V_base - Kv * risk * e_x
+    # Risk factor reduces speed based on 'l' (penetration depth)
+    risk_factor = 0.05 
+    V_cmd = V_base - (abs(l) * risk_factor * v_current)
+    
+    # Hard limits
+    V_cmd = max(MAX_SPEED_PPS * 0.2, min(V_cmd, MAX_SPEED_PPS))
 
-    # Clamp to avoid stopping completely and to keep within limits
-    V = max(V_min, min(V, MAX_SPEED_PPS))
-    print(V)
-    return V, omega_s
+    return V_cmd, omega_s
 
 
 def main():
@@ -278,7 +317,15 @@ def main():
     screen = pygame.display.set_mode((SCREEN_WIDTH_PX, SCREEN_HEIGHT_PX))
     pygame.display.set_caption(WINDOW_TITLE)
     clock = pygame.time.Clock()
-    #plotter = LiveSensorPlot()
+    plotter = LiveSensorPlot()
+    
+    # --- CSV LOGGING SETUP ---
+    log_filename = f"lta_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    csv_file = open(log_filename, 'w', newline='')
+    csv_writer = csv.writer(csv_file)
+    # Write header
+    csv_writer.writerow(['time_s', 'lateral_dist_px', 'lateral_dist_m', 'in_lane', 'speed_pps', 'speed_mps', 'steering_rad', 'heading_rad', 'lta_active'])
+    csv_file.flush()
     
     # --- 1. SETUP ENVIRONMENT ---
     env = CurvedEnvironment()
@@ -315,9 +362,17 @@ def main():
     # --- 5. MAIN LOOP ---
     running = True
     paused = False
+    frame_count = 0
+    test_start_time = None
     
     while running:
         dt = clock.tick(FPS) / 1000.0
+        
+        # Start timer on first frame
+        if test_start_time is None:
+            test_start_time = 0.0
+        else:
+            test_start_time += dt
         
         # Event Handling
         for event in pygame.event.get():
@@ -348,7 +403,7 @@ def main():
         
         if sensor_result is not None:
             lateral_dist, e_x, road_angle, side = sensor_result
-            
+
             # A. Check Danger Zone (engage as soon as we hit threshold)
             in_danger_zone = abs(lateral_dist) <= LTA_THRESHOLD
             
@@ -365,12 +420,38 @@ def main():
         car.update(v_cmd, s_cmd, dt)
         viewport.update(car)
         
+        # --- LOG METRICS TO CSV ---
+        if sensor_result is not None:
+            lateral_dist, e_x, road_angle, side = sensor_result
+            # Check if car is within safe lane bounds (assume LANE_WIDTH_PX / 2 from center)
+            in_lane = abs(lateral_dist) > (CAR_WIDTH_PX/2)
+        else:
+            lateral_dist = None
+            in_lane = None
+        
+        x, y, theta, phi, _ = car.get_state()
+        speed_pps = car.get_velocity()
+        
+        csv_writer.writerow([
+            test_start_time,
+            lateral_dist,
+            lateral_dist / PPM if lateral_dist is not None else None,
+            in_lane,
+            speed_pps,
+            speed_pps / PPM,
+            phi,
+            theta,
+            LTA_activate
+        ])
+        csv_file.flush()
+        frame_count += 1
+        
         #print("car speed: ", v_cmd)
         #print(e_x)
         
         # Visualization
         plot_dist = sensor_result[0] if sensor_result else None
-        #plotter.update(plot_dist)
+        plotter.update(plot_dist)
         draw_hud(screen, car, clock)
         
         # TODO: Remove this at the end or move it to draw_hub function
@@ -385,6 +466,8 @@ def main():
         pygame.display.flip()
         
     pygame.quit()
+    csv_file.close()
+    print(f"\nTest complete. Logged {frame_count} frames to: {log_filename}")
     sys.exit()
 
 
