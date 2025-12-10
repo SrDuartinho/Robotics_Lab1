@@ -6,7 +6,7 @@ SCREEN_WIDTH_PX = 1280
 SCREEN_HEIGHT_PX = 720
 FPS = 60
 DT = 1.0 / FPS                          # Time per frame (seconds)
-WINDOW_TITLE = "Robotics Lab 1: Kinematic Bicycle Model"
+WINDOW_TITLE = "Robotics Lab 1: Kinematic Bicycle Model, Non-Linear LTA Control"
 
 # --- 2. SCALE (The Bridge between Worlds) ---
 PPM = 25  # Pixels Per Meter (50 px = 1 m)

@@ -257,8 +257,20 @@ def car_robot_control(car, dist, e_x, road_angle, side):
     # Note: Gains are small because v is in pixels/sec (~100-300)
     
     # Tuning parameters
-    K1 = 0.0002   # Lateral Repulsion Gain
-    K2 = 0.8      # Heading Alignment Gain
+    v_ref_pps = 15.0 * PPM      # reference speed in pixels
+    K1_ref = 0.000015  # Ideal Repulsion at v_ref
+    K2_ref = 0.005     # Ideal Alignment at v_ref
+    
+    ratio = MAX_SPEED_PPS / v_ref_pps
+    
+    # Lateral Repulsion Gain
+    # Scales with Inverse Square (1/raitio^2)
+    K1 = K1_ref * (1.0 / (ratio ** 2))
+    
+    # Heading Alignment Gain
+    # This should be the dominant force to keep the car parallel.
+    # Scales linear
+    K2 = K2_ref * ratio
     
     # This gives us the IDEAL steering angle (delta)
     target_delta = (-K1 * v_current * l) + (K2 * abs(v_current) * e_theta)  
