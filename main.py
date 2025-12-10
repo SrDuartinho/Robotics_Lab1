@@ -148,13 +148,6 @@ def handle_input(car):
     
     # --- 1. VELOCITY CONTROL (With Inertia) ---
     target_v = MAX_SPEED_PPS
-    
-    # Check Manual Inputs
-    # if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-    #     target_v = -MAX_SPEED_PPS * 0.5
-    # elif keys[pygame.K_UP] or keys[pygame.K_w]:
-    #     target_v = MAX_SPEED_PPS
-    # Note: Default is Max Speed (Cruising), simulating a heavy throttle foot.
 
     # SMOOTHING LOGIC:
     # If accelerating: 2% change per frame (Simulates Engine Lag/Weight)
@@ -228,70 +221,77 @@ def is_moving_towards_wall(car, road_angle, side):
         
     return False
 
+
 def car_robot_control(car, dist, e_x, road_angle, side):
     """
     Task 5: LTA Controller implementation.
     
-    Control Law (Lecture 4, Slide 15): omega = Ks * e_theta + Kl * e_y
+    Formula (Lecture 4, Slide 17): 
+    delta = -K1 * v * l + K2 * |v| * (psi_ref - psi)
     
     We combine:
     1. Heading Error (e_theta): Align car with road tangent.
     2. Lateral Error (e_y): "Push" the car away if it is too close to the wall.
     """
-    # --- TUNING PARAMETERS ---
-    # Ks: Heading Gain. Controls how fast we align to the road.
-    Ks = 100 
+    # --- GET CURRENT STATE ---
+    v_current = car.get_velocity()
+    _, _, theta, current_steering_phi, _ = car.get_state()
     
-    # Kl: Lateral Repulsion Gain. Controls how hard we "bounce" off the wall.
-    # Higher = stronger push when close to the line.
-    Kl = 0.1
-    
-    Kv = 0.5                       # slowdown gain per pixel of risk
-    
-    # Speed tuning
-    V_base = MAX_SPEED_PPS * 0.95  # cruise speed when LTA active
-    V_min = MAX_SPEED_PPS * 0.3    # floor speed under high risk
-    
-    
-    # --- 1. CALCULATE HEADING ERROR (e_theta) ---
-    _, _, theta, _, _ = car.get_state()
-    
+    # --- CALCULATE HEADING ERROR (psi_ref - psi) ---
+    # We define e_theta = road_angle - car_theta
     # Align road angle to fix sensor direction ambiguity
     forward_road_angle = align_road_angle(theta, road_angle)
     e_theta = normalize_angle(forward_road_angle - theta)
     
-    # --- 2. CALCULATE LATERAL ERROR (e_y / Repulsion) ---
+    # --- CALCULATE LATERAL ERROR (e_y / Repulsion) ---
     # How deep are we in the danger zone?
-    # If dist is 0 (touching wall), push is Max. If dist is Threshold, push is 0.
-    push_magnitude = max(0, LTA_THRESHOLD - dist)
+    # If dist is 0 (touching wall), penetration is Max. 
+    # If dist is Threshold, penetration is 0.
+    penetration = max(0, LTA_THRESHOLD - dist)
     
-    # --- 3. COMBINE TERMS ---
-    # Base correction from heading
-    omega_s = Ks * e_theta
-    
-    # Add repulsion based on side
+    # Sign Convention:
+    # If hitting LEFT wall, we need a POSITIVE steering response (Turn Right).
+    # The formula is -K1*v*l. If v>0, we need l to be NEGATIVE to get a positive result.
     if side == 'left':
-        # Left Wall: We want to steer Right (+omega) to move away
-        omega_s += Kl * push_magnitude
-    elif side == 'right':
-        # Right Wall: We want to steer Left (-omega) to move away
-        omega_s -= Kl * push_magnitude
+        l = -penetration 
+    else: # right
+        l = penetration
         
-    # --- 4. OUTPUT ---
+    # --- APPLY NON-LINEAR CONTROL LAW (Finding Delta) ---
+    # Formula: delta = -K1 * v * l + K2 * |v| * e_theta
+    # Note: Gains are small because v is in pixels/sec (~100-300)
+    
+    # Tuning parameters
+    K1 = 0.0002   # Lateral Repulsion Gain
+    K2 = 0.8      # Heading Alignment Gain
+    
+    # This gives us the IDEAL steering angle (delta)
+    target_delta = (-K1 * v_current * l) + (K2 * abs(v_current) * e_theta)  
+    
+    # Clamp target to physical limits of the car (e.g. +/- 30 degrees)
+    MAX_STEER = MAX_STEER_ANGLE_RAD
+    target_delta = max(-MAX_STEER, min(target_delta, MAX_STEER))  
+    
+    steering_diff = target_delta - current_steering_phi
+    Kp_steering = 10.0  # How aggressively we turn the wheel to match the target
+    
+    omega_s = Kp_steering * steering_diff
+    
     # Clamp to physical limits
     omega_s = max(-STEER_RATE_RPS, min(omega_s, STEER_RATE_RPS))
+        
+    # --- SAFETY SPEED CONTROL ---
+    # Slow down if penetration is deep or steering is hard
+    V_base = MAX_SPEED_PPS
     
-    # ------------------------------------------------------------
-    # --- 4. RESPONSIVE SPEED CONTROL UNDER LTA ------------------
-    # ------------------------------------------------------------
-    # Risk grows as we get closer to the wall; slow down accordingly.
-    risk = max(0.0, LTA_THRESHOLD - dist)
-    V = V_base - Kv * risk * e_x
+    # Risk factor reduces speed based on 'l' (penetration depth)
+    risk_factor = 0.05 
+    V_cmd = V_base - (abs(l) * risk_factor * v_current)
+    
+    # Hard limits
+    V_cmd = max(MAX_SPEED_PPS * 0.2, min(V_cmd, MAX_SPEED_PPS))
 
-    # Clamp to avoid stopping completely and to keep within limits
-    V = max(V_min, min(V, MAX_SPEED_PPS))
-
-    return V, omega_s
+    return V_cmd, omega_s
 
 
 def main():
