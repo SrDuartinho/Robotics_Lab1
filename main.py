@@ -137,40 +137,40 @@ def handle_sensors(screen, car, env, left_sensor, right_sensor, viewport):
 
 def handle_input(car):
     """
-    Manual Control with:
-    1. Sport-Tuned Steering (Responsive at high speed)
-    2. Inertia-Based Acceleration (Prevents jerk when LTA hands back control)
-    3. Driver Intent Detection (For overtaking)
+    Process keyboard input and return control commands.
+    
+    Returns:
+        V: Linear velocity (pixels/sec)
+        omega_s: Steering rate (radians/sec)
     """
     keys = pygame.key.get_pressed()
+    current_v = car.get_velocity()
     
-    # Compute velocity command
-    V = MAX_SPEED_PPS
-    # if keys[pygame.K_UP] or keys[pygame.K_w]:
-    #     V = MAX_SPEED_PPS
-    # elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
-    #     V = -MAX_SPEED_PPS * REVERSE_SPEED_FACTOR
+    # --- 1. VELOCITY CONTROL (With Inertia) ---
+    target_v = MAX_SPEED_PPS
+
+    # SMOOTHING LOGIC:
+    # If accelerating: 2% change per frame (Simulates Engine Lag/Weight)
+    # If braking:      8% change per frame (Brakes are stronger)
+    accel_smoothing = 0.02
+    if target_v < current_v:
+        accel_smoothing = 0.08
+        
+    V = current_v + (target_v - current_v) * accel_smoothing
     
     # Compute steering rate command
     omega_s = 0.0
-    DECAY_GAIN = 5.0 
-    driver_is_steering = False # FLAG: Tell Main Loop if we are active
-
     if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-        omega_s = -active_turn_rate
-        driver_is_steering = True
-        
+        omega_s = -STEER_RATE_RPS  # Turn left (increase phi)
     elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-        omega_s = active_turn_rate
-        driver_is_steering = True
-        
+        omega_s = STEER_RATE_RPS  # Turn right (decrease phi)
     else:
-        # C. Passive Decay (Snap to Center)
-        # We use the full physical rate (not dampened) to stabilize fast.
-        natural_return_rate = -car.phi * DECAY_GAIN
-        omega_s = max(-STEER_RATE_RPS, min(natural_return_rate, STEER_RATE_RPS))
+        if car.phi < 0.0:
+            omega_s = STEER_RATE_RPS
+        if car.phi > 0.0:
+            omega_s = -STEER_RATE_RPS
+    return V, omega_s
 
-    return V, omega_s, driver_is_steering
 
 def normalize_angle(angle):
     """Wraps angle to [-pi, pi]."""
@@ -375,43 +375,22 @@ def main():
         sensor_result = handle_sensors(screen, car, env, left_sensor, right_sensor, viewport)
         
         # Logic
-        v_cmd, s_cmd, driver_is_steering = handle_input(car)
+        v_cmd, s_cmd = handle_input(car)
         LTA_activate = False
         
         if sensor_result is not None:
             lateral_dist, e_x, road_angle, side = sensor_result
 
-            # --- 1. CALCULATE STATES ---
-            # Strict Danger Zone
+            # A. Check Danger Zone (engage as soon as we hit threshold)
             in_danger_zone = abs(lateral_dist) <= LTA_THRESHOLD
             
-            # Relaxed Buffer Zone (Keep LTA on a bit longer to finish aligning)
-            in_buffer_zone = abs(lateral_dist) <= (LTA_THRESHOLD + 20)
+            # B. (Optional) heading check; keep for logging/future tuning
+            moving_to_danger = is_moving_towards_wall(car, road_angle, side)
             
-            # Check Heading
-            _, _, theta, _, _ = car.get_state()
-            forward_road_angle = align_road_angle(theta, road_angle)
-            heading_error = normalize_angle(forward_road_angle - theta)
-            
-            # Is car aligned? (Threshold ~3 degrees)
-            is_bad_heading = abs(heading_error) > 0.05
-
-            # --- 2. ACTIVATION LOGIC ---
-            
-            # OVERRIDE: If driver is steering, LTA stays OFF (allows overtaking)
-            if not driver_is_steering:
-                
-                # CASE A: Entry - Trigger LTA immediately
-                if in_danger_zone:
-                    LTA_activate = True
-                    
-                # CASE B: Exit Hysteresis - Keep LTA on until aligned
-                # If we are in the buffer (just outside danger) AND still pointing wrong, stay active.
-                elif in_buffer_zone and is_bad_heading:
-                     LTA_activate = True
-
-            # --- 3. EXECUTE LTA ---
-            if LTA_activate:
+            # D. Final Decision
+            # Engage LTA immediately upon entering the zone, regardless of heading
+            if in_danger_zone and moving_to_danger:
+                LTA_activate = True
                 v_cmd, s_cmd = car_robot_control(car, lateral_dist, e_x, road_angle, side)
         
         # Physics Update
